@@ -82,10 +82,10 @@ public:
         state(mKappa) = x(mKappa) + u(mDotKappa) * dt;
         state(mVel) = NextVel(x, u, dt);
         state(mAcc) = x(mAcc) + u(mJerk) * dt;
-        double dx = GaussLegendreIntegrate<delta_x, double>(x(mTheta), state(mTheta), x(mVel), state(mVel), dt);
-        double dy = GaussLegendreIntegrate<delta_y, double>(x(mTheta), state(mTheta), x(mVel), state(mVel), dt);
-        state(mXPos) = x(mXPos) + dx;
-        state(mYPos) = x(mYPos) + dy;
+        const Eigen::Vector2d displacement =
+                IntegratePlanarPosition(x(mTheta), state(mTheta), x(mVel), state(mVel), dt);
+        state(mXPos) = x(mXPos) + displacement.x();
+        state(mYPos) = x(mYPos) + displacement.y();
         return state;
     }
 

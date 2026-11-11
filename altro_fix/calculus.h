@@ -26,6 +26,30 @@ struct demo final : function<T> {
     T operator()(const T x) const override { return static_cast<T>(1) / (1 + std::sqrt(x)); }
 };
 
+// Nodes and weights of the 10-point Gauss-Legendre rule on [-1, 1].
+namespace gauss_legendre {
+inline constexpr std::array<double, 10> kNodes{-0.9739065285171717,
+                                               -0.8650633666889845,
+                                               -0.6794095682990244,
+                                               -0.4333953941292472,
+                                               -0.1488743389816312,
+                                               0.1488743389816312,
+                                               0.4333953941292472,
+                                               0.6794095682990244,
+                                               0.8650633666889845,
+                                               0.9739065285171717};
+inline constexpr std::array<double, 10> kWeights{0.0666713443086881,
+                                                 0.1494513491505806,
+                                                 0.2190863625159820,
+                                                 0.2692667193099963,
+                                                 0.2955242247147529,
+                                                 0.2955242247147529,
+                                                 0.2692667193099963,
+                                                 0.2190863625159820,
+                                                 0.1494513491505806,
+                                                 0.0666713443086881};
+} // namespace gauss_legendre
+
 template<template<typename> class __func,
          typename T,
          typename std::enable_if<std::is_base_of_v<function<T>, __func<T>>, int>::type = 0>
@@ -33,18 +57,8 @@ inline T GaussLegendreIntegrate(const T lb, const T ub) {
     Eigen::Matrix<T, 10, 1> weights;
     weights << 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
             0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881;
-    // Fixed-size arrays on the stack: this runs twice per step of every rollout, so it must not
-    // touch the heap.
-    static constexpr std::array<double, 10> x{-0.9739065285171717,
-                                              -0.8650633666889845,
-                                              -0.6794095682990244,
-                                              -0.4333953941292472,
-                                              -0.1488743389816312,
-                                              0.1488743389816312,
-                                              0.4333953941292472,
-                                              0.6794095682990244,
-                                              0.8650633666889845,
-                                              0.9739065285171717};
+    // Fixed-size arrays only: nothing here may touch the heap.
+    const std::array<double, 10> &x = gauss_legendre::kNodes;
     T coef_m = (ub - lb) / 2;
     T coef_p = (ub + lb) / 2;
     std::array<T, 10> fx;
@@ -71,18 +85,8 @@ inline T GaussLegendreIntegrate(const T l_theta, const T u_theta, const T l_vel,
     Eigen::Matrix<T, knots, 1> weights;
     weights << 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
             0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881;
-    // Fixed-size arrays on the stack: this runs twice per step of every rollout, so it must not
-    // touch the heap.
-    static constexpr std::array<double, 10> x{-0.9739065285171717,
-                                              -0.8650633666889845,
-                                              -0.6794095682990244,
-                                              -0.4333953941292472,
-                                              -0.1488743389816312,
-                                              0.1488743389816312,
-                                              0.4333953941292472,
-                                              0.6794095682990244,
-                                              0.8650633666889845,
-                                              0.9739065285171717};
+    // Fixed-size arrays only: nothing here may touch the heap.
+    const std::array<double, 10> &x = gauss_legendre::kNodes;
     T coef_m = delta_t / 2.0;
     T coef_p = delta_t / 2.0;
     T t_rate = (u_theta - l_theta) / delta_t;
@@ -97,6 +101,36 @@ inline T GaussLegendreIntegrate(const T l_theta, const T u_theta, const T l_vel,
     Eigen::Map<Matrix<T, 10, 1>> xi(fx.data());
     T integrates = (weights.array() * xi.array()).sum();
     return coef_m * integrates;
+}
+
+// Position increment of a step along which heading and speed vary linearly in time:
+//   [dx, dy] = int_0^dt [cos(theta(t)), sin(theta(t))] * v(t) dt   (10-point Gauss-Legendre).
+// Same quadrature as GaussLegendreIntegrate<delta_x / delta_y>, evaluated in the frame of the
+// midpoint heading: there the nodes pair up symmetrically, the odd terms cancel, and only 5
+// cos + 5 sin of the half nodes plus one sin / cos of the midpoint heading are needed, instead
+// of 10 sin + 10 cos. Equal to the unpaired sums up to round-off.
+inline Eigen::Vector2d IntegratePlanarPosition(
+        double theta0, double theta1, double velocity0, double velocity1, double dt) {
+    const double half_dt = dt / 2.0;
+    const double half_theta_change = ((theta1 - theta0) / dt) * half_dt;
+    const double half_velocity_change = ((velocity1 - velocity0) / dt) * half_dt;
+    const double mid_heading = theta0 + half_theta_change;
+    const double mid_velocity = velocity0 + half_velocity_change;
+    double weighted_cos = 0.0;
+    double weighted_node_sin = 0.0;
+    for (size_t i = gauss_legendre::kNodes.size() / 2; i < gauss_legendre::kNodes.size(); ++i) {
+        const double node = gauss_legendre::kNodes[i];
+        const double angle = node * half_theta_change;
+        const double weight = gauss_legendre::kWeights[i];
+        weighted_cos += weight * std::cos(angle);
+        weighted_node_sin += weight * node * std::sin(angle);
+    }
+    // Even terms use the sum of the paired velocities, odd terms use their difference.
+    const double longitudinal = dt * mid_velocity * weighted_cos;
+    const double lateral = dt * half_velocity_change * weighted_node_sin;
+    const double cos_heading = std::cos(mid_heading);
+    const double sin_heading = std::sin(mid_heading);
+    return {cos_heading * longitudinal - sin_heading * lateral, sin_heading * longitudinal + cos_heading * lateral};
 }
 
 //template<template<typename> class __func, typename T>
