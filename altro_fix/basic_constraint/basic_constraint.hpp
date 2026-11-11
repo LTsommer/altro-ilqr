@@ -281,6 +281,7 @@ public:
             b_ = config.u_min;
         } else {
             a_ = 1;
+            b_.reserve(step_num_);
             for (size_t i = 0; i < step_num_; i++) {
                 b_.emplace_back(-config.u_max[i]);
             }
@@ -484,6 +485,7 @@ public:
         // -(u - ref) + u_min <= 0
         // (u - ref) -u_max <=0
         size_t num_steps = config.p_ref.size();
+        b_.reserve(num_steps);
         if (is_lb) {
             a_ = -1;
             for (size_t t = 0; t < num_steps; t++) {

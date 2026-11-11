@@ -105,7 +105,9 @@ public:
             config_.bound_left_safe_dist.size() != num_bounds or config_.bound_right_safe_dist.size() != num_bounds)
             return;
         const int size = x_res_seq.size();
-        config_.p_bound.assign(size, {});
+        // resize, not assign(size, {}): keeps the buffers of the per-step boundary segments, so the
+        // element-wise copies below do not allocate again on every update.
+        config_.p_bound.resize(size);
         config_.p_ref.assign(size, Vector2d::Zero());
         config_.yaw.assign(size, 0.0);
         config_.ref_x.assign(size, 0.0);

@@ -113,10 +113,15 @@ public:
     MatrixXd CalcAllViolations(States &x,
                                Controls &u,
                                std::unordered_map<std::string, vector<double>> &violation_record) const {
+        const auto &cost_union = solver_->Problem().GetCostUnionPtr();
         vector<double> violations;
+        violations.reserve(
+                (cost_union->GetImmutableEqConstraints().size() + cost_union->GetImmutableIneqConstraints().size()) *
+                steps_num_);
         int rows = 0;
         for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
             vector<double> vio;
+            vio.reserve(steps_num_);
             cout << cons_ptr->GetName() << "\n";
             for (int t = 0; t < steps_num_; ++t) {
                 bool success = cons_ptr->Evaluate(t, x[t], u[t]);
@@ -133,6 +138,7 @@ public:
 
         for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
             vector<double> vio;
+            vio.reserve(steps_num_);
             cout << cons_ptr->GetName() << "\n";
             for (int t = 0; t < steps_num_; ++t) {
                 bool success = cons_ptr->Evaluate(t, x[t], u[t]);
@@ -266,6 +272,8 @@ private:
     std::vector<ActiveRow> CollectActiveRows(const States &x, const Controls &u) const {
         auto &cost_union = solver_->Problem().GetCostUnionPtr();
         std::vector<ActiveRow> rows;
+        // Typically a few active rows per step; one growth step at most in the common case.
+        rows.reserve(4 * (steps_num_ + 1));
         auto make_row = [](int t, double g, const VecX &gx, const VecU &gu, double residual) {
             const double norm = std::max(std::sqrt(gx.squaredNorm() + gu.squaredNorm()), 1e-12);
             return ActiveRow{t, residual, g / norm, gx, gu};

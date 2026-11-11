@@ -12,6 +12,7 @@
 #include <cmath>
 #include <Eigen/Dense>
 #include <algorithm>
+#include <array>
 
 using Eigen::Matrix;
 
@@ -32,21 +33,23 @@ inline T GaussLegendreIntegrate(const T lb, const T ub) {
     Eigen::Matrix<T, 10, 1> weights;
     weights << 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
             0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881;
-    std::vector<T> x{-0.9739065285171717,
-                     -0.8650633666889845,
-                     -0.6794095682990244,
-                     -0.4333953941292472,
-                     -0.1488743389816312,
-                     0.1488743389816312,
-                     0.4333953941292472,
-                     0.6794095682990244,
-                     0.8650633666889845,
-                     0.9739065285171717};
+    // Fixed-size arrays on the stack: this runs twice per step of every rollout, so it must not
+    // touch the heap.
+    static constexpr std::array<double, 10> x{-0.9739065285171717,
+                                              -0.8650633666889845,
+                                              -0.6794095682990244,
+                                              -0.4333953941292472,
+                                              -0.1488743389816312,
+                                              0.1488743389816312,
+                                              0.4333953941292472,
+                                              0.6794095682990244,
+                                              0.8650633666889845,
+                                              0.9739065285171717};
     T coef_m = (ub - lb) / 2;
     T coef_p = (ub + lb) / 2;
-    std::vector<T> fx;
-    std::for_each(
-            std::begin(x), std::end(x), [&](const T x_) { fx.emplace_back(__func<T>()((coef_m * x_ + coef_p))); });
+    std::array<T, 10> fx;
+    for (size_t i = 0; i < x.size(); ++i)
+        fx[i] = __func<T>()((coef_m * static_cast<T>(x[i]) + coef_p));
     Eigen::Map<Eigen::Matrix<T, 10, 1>> xi(fx.data());
     T integrates = (weights.array() * xi.array()).sum();
     return coef_m * integrates;
@@ -68,29 +71,29 @@ inline T GaussLegendreIntegrate(const T l_theta, const T u_theta, const T l_vel,
     Eigen::Matrix<T, knots, 1> weights;
     weights << 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
             0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881;
-    std::vector<T> x{-0.9739065285171717,
-                     -0.8650633666889845,
-                     -0.6794095682990244,
-                     -0.4333953941292472,
-                     -0.1488743389816312,
-                     0.1488743389816312,
-                     0.4333953941292472,
-                     0.6794095682990244,
-                     0.8650633666889845,
-                     0.9739065285171717};
+    // Fixed-size arrays on the stack: this runs twice per step of every rollout, so it must not
+    // touch the heap.
+    static constexpr std::array<double, 10> x{-0.9739065285171717,
+                                              -0.8650633666889845,
+                                              -0.6794095682990244,
+                                              -0.4333953941292472,
+                                              -0.1488743389816312,
+                                              0.1488743389816312,
+                                              0.4333953941292472,
+                                              0.6794095682990244,
+                                              0.8650633666889845,
+                                              0.9739065285171717};
     T coef_m = delta_t / 2.0;
     T coef_p = delta_t / 2.0;
     T t_rate = (u_theta - l_theta) / delta_t;
     T v_rate = (u_vel - l_vel) / delta_t;
-    std::vector<T> fx(knots, (T)0.0);
-    int index = 0;
-    std::for_each(std::begin(x), std::end(x), [&](const T &tmp_x) {
-        T dt = tmp_x * coef_m + coef_p;
+    std::array<T, knots> fx;
+    for (size_t i = 0; i < x.size(); ++i) {
+        T dt = static_cast<T>(x[i]) * coef_m + coef_p;
         T theta = l_theta + t_rate * dt;
         T vel = l_vel + v_rate * dt;
-        fx[index] = __func<T>()(theta, vel);
-        ++index;
-    });
+        fx[i] = __func<T>()(theta, vel);
+    }
     Eigen::Map<Matrix<T, 10, 1>> xi(fx.data());
     T integrates = (weights.array() * xi.array()).sum();
     return coef_m * integrates;

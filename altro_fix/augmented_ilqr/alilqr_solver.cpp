@@ -483,12 +483,12 @@ void ALILQRSolver<T, M, N>::DecreaseRho(double &drho, double &rho) const {
 
 template<typename T, unsigned int M, unsigned int N>
 double ALILQRSolver<T, M, N>::GetGradientNorm(const VecUs &l, const Controls &u) const {
-    std::vector<double> vals(l.size());
+    // Fixed-size expression and a running sum: called once per iLQR iteration, no heap use.
+    double sum = 0.0;
     for (uint32_t i = 0; i < l.size(); i++) {
-        VectorXd v = l[i].cwiseAbs().array() / (u[i].cwiseAbs().array() + 1);
-        vals[i] = v.maxCoeff();
+        sum += (l[i].cwiseAbs().array() / (u[i].cwiseAbs().array() + 1)).maxCoeff();
     }
-    return std::accumulate(vals.begin(), vals.end(), 0.0) / vals.size();
+    return sum / l.size();
 }
 
 template<typename T, unsigned M, unsigned N>

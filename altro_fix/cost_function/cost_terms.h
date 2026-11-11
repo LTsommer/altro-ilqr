@@ -11,6 +11,7 @@
 #include "cost_term_config.hpp"
 #include "../constraint_definition/constraint_formulation.h"
 #include <memory>
+#include <stdexcept>
 
 /*
   J_acc = 1/2 * w_acc * acc^2
@@ -204,6 +205,9 @@ public:
           w_jerk_(config.weights.at(WeightJerk)),
           velocity_(config.velocity),
           acceleration_(config.acceleration) {
+        // Both references are read at every node, the terminal one included.
+        if (acceleration_.size() < velocity_.size())
+            throw std::invalid_argument("LateralComfortCostFunc: config.acceleration needs one entry per node");
         cross_coeff_.resize(velocity_.size());
         for (size_t i = 0; i < velocity_.size(); i++) {
             cross_coeff_[i] = 2 * w_jerk_ * pow(velocity_[i], 4) * acceleration_[i];

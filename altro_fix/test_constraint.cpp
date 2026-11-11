@@ -140,6 +140,18 @@ int main() {
     //    double min_safe_buffer = 0.0;
     vector<double> lb_x, lb_y, rb_x, rb_y;
     vector<vector<Vector2d>> p_bounds;
+    // One entry per reference point (ds / dt / acceleration have one fewer).
+    p_ref.reserve(rx.size());
+    p_bounds.reserve(rx.size());
+    left_safe_dist.reserve(rx.size());
+    right_safe_dist.reserve(rx.size());
+    yaw.reserve(rx.size());
+    kappa.reserve(rx.size());
+    velocity.reserve(rx.size());
+    s.reserve(rx.size());
+    ds.reserve(rx.size());
+    dt.reserve(rx.size());
+    acceleration.reserve(rx.size());
     for (int i = 0; i < rx.size(); ++i) {
         Vector2d ref;
         double x = rx[i];
@@ -184,6 +196,7 @@ int main() {
         }
 
         vector<Vector2d> p_bound;
+        p_bound.reserve(bound_points.size());
         std::for_each(bound_points.begin(), bound_points.end(), [&p_bound, &fcs](const Vec2d &f_point) {
             Vec2d c_point;
             TRANSFORM_STATUS status = fcs->FrenetCoord2CartCoord(f_point, c_point);
@@ -224,6 +237,13 @@ int main() {
         s_old = s_new;
         //        cout << "\n";
     }
+    // The cost terms read the reference acceleration at every node. The loop above gives one value
+    // per interval; the terminal node uses 0.
+    acceleration.emplace_back(0.0);
+    lb_x.reserve(p_bounds.size());
+    lb_y.reserve(p_bounds.size());
+    rb_x.reserve(p_bounds.size());
+    rb_y.reserve(p_bounds.size());
     for (const auto &bound : p_bounds) {
         lb_x.emplace_back(bound.front()(0));
         lb_y.emplace_back(bound.front()(1));
