@@ -1644,11 +1644,11 @@ private:
             ok = true;
             for (int k = 0; k < kNewtonSteps and ok; ++k) {
                 const Point2D r = fcs_->GetRefCurvePoint(s);
-                const double h = fcs_->GetRefCurveHeading(s);
+                const Point2D tangent = fcs_->GetRefCurveUnitTangent(s);
                 const double dx = px - r.x, dy = py - r.y;
-                const double l = -std::sin(h) * dx + std::cos(h) * dy;
+                const double l = -tangent.y * dx + tangent.x * dy;
                 const double denom = std::max(0.1, 1.0 - fcs_->GetRefCurveCurvature(s) * l);
-                s += (std::cos(h) * dx + std::sin(h) * dy) / denom;
+                s += (tangent.x * dx + tangent.y * dy) / denom;
                 ok = std::fabs(s - last_s_[step]) < kMaxLocalShift and s >= 0.0 and s <= fcs_->GetSlength();
             }
         }
@@ -1660,12 +1660,12 @@ private:
         last_s_[step] = s;
         has_s_[step] = true;
         const Point2D r = fcs_->GetRefCurvePoint(s);
-        const double h = fcs_->GetRefCurveHeading(s);
-        const double l = -std::sin(h) * (px - r.x) + std::cos(h) * (py - r.y);
+        const Point2D tangent = fcs_->GetRefCurveUnitTangent(s);
+        const double l = -tangent.y * (px - r.x) + tangent.x * (py - r.y);
         const double scale = 1.0 / std::max(0.1, 1.0 - fcs_->GetRefCurveCurvature(s) * l);
         p.s = s;
-        p.ds_dx = scale * std::cos(h);
-        p.ds_dy = scale * std::sin(h);
+        p.ds_dx = scale * tangent.x;
+        p.ds_dy = scale * tangent.y;
         last_p_[step] = Vector2d(px, py);
         last_proj_[step] = p;
         return true;
