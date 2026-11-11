@@ -1,0 +1,19 @@
+# Code style for altro_fix/. Apply it with scripts/format.sh.
+BasedOnStyle: Google
+IndentWidth: 4
+ContinuationIndentWidth: 8
+AccessModifierOffset: -4
+ColumnLimit: 120
+DerivePointerAlignment: false
+PointerAlignment: Right
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+SpaceAfterTemplateKeyword: false
+SpacesBeforeTrailingComments: 1
+BinPackParameters: false
+BinPackArguments: false
+# Include order matters here (some headers rely on what was included before them).
+SortIncludes: false
+# Leave comments alone: they hold long formulas and commented-out code.
+ReflowComments: false
