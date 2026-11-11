@@ -26,6 +26,7 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
     vector<double> vec_s;
     vector<double> vec_k;
     vec_s.reserve(length / fcs_params.step_s + 1);
+    vec_k.reserve(length / fcs_params.step_s + 1);
     while (tmp_s <= length) {
         double dx = x_s.deriv<1>(tmp_s);
         double dy = y_s.deriv<1>(tmp_s);
@@ -120,6 +121,8 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
     //  vector<double> vec_s;
     assert(vec_x.size() == vec_y.size());
     vector<std::pair<double, double>> vec_c;
+    vec_c.reserve(vec_x.size());
+    vec_s_.reserve(vec_s_.size() + vec_x.size());
     vec_s_.push_back(0);
     for (int i = 1; i < (int)vec_x.size(); i++) {
         vec_s_.push_back(vec_s_[i - 1] + sqrt(sqr(vec_x[i] - vec_x[i - 1]) + sqr(vec_y[i] - vec_y[i - 1])));
@@ -128,6 +131,7 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
     m_y_s.set_points(vec_s_, vec_y);
     m_length = vec_s_[vec_x.size() - 1];
     vector<double> vec_k;
+    vec_k.reserve(vec_s_.size());
     assert(s_polyfit_start < s_polyfit_end);
     s_polyfit_start = std::max(0.0, s_polyfit_start);
     double s_end = std::min(m_length, s_polyfit_end);
@@ -177,6 +181,8 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
     vector<double> dxs, dys, ddxs, ddys, dddxs, dddys;
     int num = x.size();
     rst.resize(num);
+    for (auto *v : {&headings, &kappas, &dxs, &dys, &ddxs, &ddys, &dddxs, &dddys})
+        v->reserve(num);
     for (int i = 0; i < num; ++i) {
         double delta_x{0.0};
         double delta_y{0.0};
@@ -197,6 +203,7 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
 
     double distance{0.0};
     vector<double> accumulated_s;
+    accumulated_s.reserve(num);
     double fx{x.front()};
     double fy{y.front()};
     double nx{0.0};
@@ -370,6 +377,7 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
 std::vector<double> FrenetCoordinateSystem::
 CartCoord2FrenetCoord1(const Point2D& cart, Point2D& frenet) const {
     std::vector<double> res;
+    res.reserve(7);
     double min_point_s = FindMinDistanceOffsetOnCurve(cart);
     double distance = std::sqrt(SquaredDistanceToOffSetOnCurve(min_point_s,
 cart)); Point2D nearest_point = { m_x_s(min_point_s),m_y_s(min_point_s) };
@@ -595,6 +603,7 @@ vector<double> FrenetCoordinateSystem::polyfit(vector<std::pair<double, double>>
     }
     X = A.fullPivLu().solve(B);
     vector<double> res;
+    res.reserve(n);
     for (int i = 0; i < n; i++) {
         res.push_back(X(i, 0));
     }

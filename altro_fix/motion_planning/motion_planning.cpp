@@ -169,6 +169,27 @@ int main(int argc, char **argv) {
     vector<double> speed_limit_s, speed_limit_v; // narrow-passage speed limit along s
     vector<Vector2d> left_boundary, right_boundary;
     vector<double> bound_s;
+    // One entry per reference point (dt / acceleration have one fewer).
+    p_ref.reserve(rx.size());
+    p_bounds.reserve(rx.size());
+    ref_x.reserve(rx.size());
+    ref_y.reserve(rx.size());
+    left_safe_dist.reserve(rx.size());
+    right_safe_dist.reserve(rx.size());
+    left_comfort_dist.reserve(rx.size());
+    right_comfort_dist.reserve(rx.size());
+    speed_limit_s.reserve(rx.size());
+    speed_limit_v.reserve(rx.size());
+    left_boundary.reserve(rx.size());
+    right_boundary.reserve(rx.size());
+    bound_s.reserve(rx.size());
+    yaw.reserve(rx.size());
+    kappa.reserve(rx.size());
+    velocity.reserve(rx.size());
+    s.reserve(rx.size());
+    T.reserve(rx.size());
+    dt.reserve(rx.size());
+    acceleration.reserve(rx.size());
     for (int i = 0; i < rx.size(); ++i) {
         //        Vector2d ref;
         //        double x = rx[i];
@@ -236,6 +257,7 @@ int main(int argc, char **argv) {
                     left_lane_boundary_1, left_lane_boundary_2, right_lane_boundary_1, right_lane_boundary_2};
         }
         vector<Vector2d> p_bound;
+        p_bound.reserve(bound_points.size());
         std::for_each(bound_points.begin(), bound_points.end(), [&p_bound, &fcs](const Vec2d &f_point) {
             Vec2d c_point;
             TRANSFORM_STATUS status = fcs->FrenetCoord2CartCoord(f_point, c_point);
@@ -307,6 +329,10 @@ int main(int argc, char **argv) {
         //        cout << "\n";
     }
 
+    lb_x.reserve(p_bounds.size());
+    lb_y.reserve(p_bounds.size());
+    rb_x.reserve(p_bounds.size());
+    rb_y.reserve(p_bounds.size());
     for (const auto &bound : p_bounds) {
         lb_x.emplace_back(bound.front()(0));
         lb_y.emplace_back(bound.front()(1));
@@ -582,6 +608,14 @@ int main(int argc, char **argv) {
     altro_solver->SetUpdateConfig(true);
     altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_v, ilqr_a, ilqr_j;
+    ilqr_x.reserve(x_res_seq.size());
+    ilqr_y.reserve(x_res_seq.size());
+    ilqr_h.reserve(x_res_seq.size());
+    ilqr_k.reserve(x_res_seq.size());
+    ilqr_dk.reserve(x_res_seq.size());
+    ilqr_v.reserve(x_res_seq.size());
+    ilqr_a.reserve(x_res_seq.size());
+    ilqr_j.reserve(x_res_seq.size());
     for (int i = 0; i < x_res_seq.size(); ++i) {
         ilqr_x.emplace_back(x_res_seq[i][mXPos]);
         ilqr_y.emplace_back(x_res_seq[i][mYPos]);
@@ -601,6 +635,7 @@ int main(int argc, char **argv) {
     }
 
     vector<double> smooth_v;
+    smooth_v.reserve(ilqr_k.size());
     std::for_each(ilqr_k.begin(), ilqr_k.end(), [&vel_max, &vel_min, &smooth_v, &acc_max](const double k) {
         double v = std::min(vel_max, std::max(std::sqrt(acc_max / abs(k)), vel_min));
         smooth_v.emplace_back(v);

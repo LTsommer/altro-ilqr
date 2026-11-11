@@ -432,7 +432,7 @@ public:
     HeadingDiffLimitsConstraint(const CostTermConfig &config, const bool is_lb) {
         horizon_ = config.steps.size();
         int sign = is_lb ? 1 : -1;
-        const vector<double> ref_yaw = config.yaw;
+        const vector<double> &ref_yaw = config.yaw;
         int steps = config.yaw.size();
         a_ = is_lb ? -1 : 1;
         b_.resize(steps);
@@ -444,7 +444,7 @@ public:
 
     void UpdateConfig(const CostTermConfig &config, const bool is_lb) {
         int sign = is_lb ? 1 : -1;
-        const vector<double> ref_yaw = config.yaw;
+        const vector<double> &ref_yaw = config.yaw;
         int steps = config.yaw.size();
         a_ = is_lb ? -1 : 1;
         b_.resize(steps);

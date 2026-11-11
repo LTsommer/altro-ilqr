@@ -121,6 +121,20 @@ int main(int argc, char **argv) {
     double min_safe_buffer = 0.1;
     vector<double> lb_x, lb_y, rb_x, rb_y;
     vector<vector<Vector2d>> p_bounds;
+    // One entry per reference point (ds / dt / acceleration have one fewer).
+    p_ref.reserve(rx.size());
+    p_bounds.reserve(rx.size());
+    left_safe_dist.reserve(rx.size());
+    right_safe_dist.reserve(rx.size());
+    left_comfort_dist.reserve(rx.size());
+    right_comfort_dist.reserve(rx.size());
+    yaw.reserve(rx.size());
+    kappa.reserve(rx.size());
+    velocity.reserve(rx.size());
+    s.reserve(rx.size());
+    ds.reserve(rx.size());
+    dt.reserve(rx.size());
+    acceleration.reserve(rx.size());
     for (int i = 0; i < rx.size(); ++i) {
         Vector2d ref;
         double x = rx[i];
@@ -159,6 +173,7 @@ int main(int argc, char **argv) {
         }
 
         vector<Vector2d> p_bound;
+        p_bound.reserve(bound_points.size());
         std::for_each(bound_points.begin(), bound_points.end(), [&p_bound, &fcs](const Vec2d &f_point) {
             Vec2d c_point;
             TRANSFORM_STATUS status = fcs->FrenetCoord2CartCoord(f_point, c_point);
@@ -209,6 +224,13 @@ int main(int argc, char **argv) {
         s_old = s_new;
         //        cout << "\n";
     }
+    // The cost terms read the reference acceleration at every node. The loop above gives one value
+    // per interval; the terminal node uses 0.
+    acceleration.emplace_back(0.0);
+    lb_x.reserve(p_bounds.size());
+    lb_y.reserve(p_bounds.size());
+    rb_x.reserve(p_bounds.size());
+    rb_y.reserve(p_bounds.size());
     for (const auto &bound : p_bounds) {
         lb_x.emplace_back(bound.front()(0));
         lb_y.emplace_back(bound.front()(1));
@@ -377,18 +399,26 @@ int main(int argc, char **argv) {
             new ALTROSolver<double, 5, 1>(std::move(ocp_interface), ds));
     altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_ddk;
+    ilqr_x.reserve(x_res_seq.size());
+    ilqr_y.reserve(x_res_seq.size());
+    ilqr_h.reserve(x_res_seq.size());
+    ilqr_k.reserve(x_res_seq.size());
+    ilqr_dk.reserve(x_res_seq.size());
+    ilqr_ddk.reserve(x_res_seq.size());
     for (int i = 0; i < x_res_seq.size(); ++i) {
         ilqr_x.emplace_back(x_res_seq[i][kXPos]);
         ilqr_y.emplace_back(x_res_seq[i][kYPos]);
         ilqr_h.emplace_back(x_res_seq[i][kTheta]);
         ilqr_k.emplace_back(x_res_seq[i][kKappa]);
         ilqr_dk.emplace_back(x_res_seq[i][kDkappa]);
-        ilqr_ddk.emplace_back(u_res_seq[i][kDDkappa]);
+        // One control fewer than states: the ddkappa column is one row shorter.
+        if (i < u_res_seq.size()) ilqr_ddk.emplace_back(u_res_seq[i][kDDkappa]);
         //        ilqr_v.emplace_back(x_res_seq[i][V]);
         //        cout << x_res_seq[i][X] << endl;
     }
 
     vector<double> smooth_v;
+    smooth_v.reserve(ilqr_k.size());
     std::for_each(ilqr_k.begin(), ilqr_k.end(), [&vel_max, &vel_min, &smooth_v, &acc_max](const double k) {
         double v = std::min(vel_max, std::max(std::sqrt(acc_max / abs(k)), vel_min));
         smooth_v.emplace_back(v);
