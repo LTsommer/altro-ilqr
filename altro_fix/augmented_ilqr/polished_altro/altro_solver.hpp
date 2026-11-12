@@ -7,6 +7,7 @@
 
 #include "alilqr_solver.h"
 #include "cost_calc.h"
+#include "projection_solver.h"
 #include "../clock.hpp"
 #include <iostream>
 #include <algorithm>
@@ -86,10 +87,12 @@ public:
         cout << "AL-iLQR iterations : " << solver_->TotalIterations() << ", time : " << solver_->SolveTimeMs()
              << " ms\n";
         cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
-        if (project)
+        if (project) {
+            cout << "ALTRO projection method : " << altro::ProjectionMethodName(projection_method_) << "\n";
             cout << "ALTRO projection : " << proj_steps << " steps, " << proj_ms << " ms\n";
-        else
+        } else {
             cout << "ALTRO projection skipped: AL-iLQR violation above " << projection_trigger_ << "\n";
+        }
         cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
         for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints())
             cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
@@ -107,6 +110,8 @@ public:
 
     // Polishing runs only when the AL-iLQR violation is below this value.
     void SetProjectionTrigger(const double violation) { projection_trigger_ = violation; }
+
+    void SetProjectionMethod(altro::ProjectionMethod method) { projection_method_ = method; }
 
     void SetUpdateConfig(const bool update) { solver_->SetUpdateConfig(update); }
 
@@ -170,11 +175,8 @@ private:
     // conflicting rows), gives a damped least-squares compromise. delta is adapted like
     // Levenberg-Marquardt: it shrinks after an accepted step and grows after a rejected one.
     //
-    // The problem is a time-varying LQR, so it is solved by a Riccati recursion in O(T) with no
-    // global matrix. The recursion also yields feedback gains K_t, and each step is applied by a
-    // nonlinear rollout from x_0,
-    //     u_t' = u_t + alpha k_t + K_t (x_t' - x_t),   x_{t+1}' = f(x_t', u_t'),
-    // so every iterate (including the result) satisfies the dynamics exactly.
+    // Riccati and sparse KKT solve the same linearized problem. Both apply the control
+    // correction by a nonlinear rollout from x_0, with feedback gains when using Riccati.
     // ------------------------------------------------------------------------------
     constexpr static double kHessianReg = 1.0e-6; // relative to the normalized H, keeps it positive definite
     constexpr static double kDampingInit = 1.0e-6;
@@ -303,14 +305,7 @@ private:
         return rows;
     }
 
-    // Quadratic model of one step: 1/2 [dx; du]^T [Qxx Qux^T; Qux Quu] [dx; du] + qx^T dx + qu^T du.
-    struct StageQuadratic {
-        MatrixLXX Qxx;
-        MatrixLUU Quu;
-        Eigen::Matrix<T, N, M> Qux;
-        VecX qx;
-        VecU qu;
-    };
+    using StageQuadratic = altro::StageQuadratic<T, M, N>;
 
     // Cost Hessian plus the 1/delta penalty of the active rows, per step.
     std::vector<StageQuadratic> BuildStageQuadratics(const std::vector<StageHessian> &h,
@@ -336,38 +331,7 @@ private:
         return q;
     }
 
-    // Riccati recursion of the time-varying LQR; du_t = k_t + K_t dx_t. Returns false if a
-    // step's control Hessian is not positive definite.
-    bool RiccatiBackward(const States &x,
-                         const Controls &u,
-                         const std::vector<StageQuadratic> &q,
-                         std::vector<VecU> &k,
-                         std::vector<Eigen::Matrix<T, N, M>> &K) const {
-        const auto &model = solver_->Problem().GetModel();
-        k.assign(steps_num_, VecU::Zero());
-        K.assign(steps_num_, Eigen::Matrix<T, N, M>::Zero());
-        MatrixLXX V = q[steps_num_].Qxx;
-        VecX v = q[steps_num_].qx;
-        for (int t = steps_num_ - 1; t >= 0; --t) {
-            const auto A = model->JacobianX(x[t], u[t], step_sizes_[t]);
-            const auto B = model->JacobianU(x[t], u[t], step_sizes_[t]);
-            const MatrixLXX Sxx = q[t].Qxx + A.transpose() * V * A;
-            const MatrixLUU Suu = q[t].Quu + B.transpose() * V * B;
-            const Eigen::Matrix<T, N, M> Sux = q[t].Qux + B.transpose() * V * A;
-            const VecX sx = q[t].qx + A.transpose() * v;
-            const VecU su = q[t].qu + B.transpose() * v;
-            const Eigen::LLT<MatrixLUU> llt(Suu);
-            if (llt.info() != Eigen::Success) return false;
-            K[t] = -llt.solve(Sux);
-            k[t] = -llt.solve(su);
-            V = Sxx + Sux.transpose() * K[t];
-            V = 0.5 * (V + V.transpose());
-            v = sx + Sux.transpose() * k[t];
-        }
-        return true;
-    }
-
-    // Applies the step by a nonlinear rollout from x_0 with the feedback gains.
+    // Applies the step by a nonlinear rollout from x_0, optionally with feedback gains.
     void Rollout(const States &x,
                  const Controls &u,
                  const std::vector<VecU> &k,
@@ -380,7 +344,11 @@ private:
         u_new.resize(steps_num_);
         x_new[0] = x[0];
         for (int t = 0; t < steps_num_; ++t) {
-            u_new[t] = u[t] + alpha * k[t] + K[t] * (x_new[t] - x[t]);
+            if (K.empty()) {
+                u_new[t] = u[t] + alpha * k[t];
+            } else {
+                u_new[t] = u[t] + alpha * k[t] + K[t] * (x_new[t] - x[t]);
+            }
             x_new[t + 1] = model->ForwardCalculation(x_new[t], u_new[t], step_sizes_[t]);
         }
     }
@@ -388,44 +356,56 @@ private:
     // Returns the number of accepted steps.
     int ProjectTrajectory(States &x, Controls &u) const {
         // Start from a dynamically consistent trajectory (AL-iLQR already gives one; this only
-        // removes round-off) so the recursion can assume zero dynamics residuals.
+        // removes round-off) so both methods can use zero dynamics residuals.
         {
             const std::vector<VecU> k0(steps_num_, VecU::Zero());
-            const std::vector<Eigen::Matrix<T, N, M>> K0(steps_num_, Eigen::Matrix<T, N, M>::Zero());
             States x_r;
             Controls u_r;
-            Rollout(x, u, k0, K0, 0.0, x_r, u_r);
+            Rollout(x, u, k0, {}, 0.0, x_r, u_r);
             x = std::move(x_r);
         }
         const std::vector<StageHessian> h = BuildCostHessian(x, u);
         double delta = kDampingInit;
         int accepted_steps = 0;
         double v_prev = std::numeric_limits<double>::infinity();
+        const auto &model = solver_->Problem().GetModel();
+        std::vector<altro::LinearDynamics<T, M, N>> dynamics;
+        dynamics.reserve(steps_num_);
 
         for (int iter = 0; iter < kMaxProjectionIter; ++iter) {
             const double v = MaxConstraintViolation(x, u);
-            if (solver_->Verbose()) cout << "ALTRO projection iter " << iter << ": max violation = " << v << "\n";
-            if (v < kTol) break;
+            if (solver_->Verbose()) {
+                cout << "ALTRO projection iter " << iter << ": max violation = " << v << "\n";
+            }
+            if (v < kTol) {
+                break;
+            }
             // Conflicting rows: the steps converge to a least-squares compromise and stop
             // making progress.
             if (v > (1.0 - kMinProjectionProgress) * v_prev) {
-                if (solver_->Verbose()) cout << "ALTRO projection: violation stalled, stop\n";
+                if (solver_->Verbose()) {
+                    cout << "ALTRO projection: violation stalled, stop\n";
+                }
                 break;
             }
             v_prev = v;
 
             const std::vector<ActiveRow> rows = CollectActiveRows(x, u);
+            dynamics.clear();
+            for (int t = 0; t < steps_num_; ++t) {
+                dynamics.push_back(
+                        {model->JacobianX(x[t], u[t], step_sizes_[t]), model->JacobianU(x[t], u[t], step_sizes_[t])});
+            }
             bool accepted = false;
             for (int tries = 0; tries < kMaxDampingTries and !accepted; ++tries) {
-                std::vector<VecU> k;
-                std::vector<Eigen::Matrix<T, N, M>> K;
-                if (RiccatiBackward(x, u, BuildStageQuadratics(h, rows, delta), k, K)) {
+                altro::ProjectionStep<T, M, N> step;
+                if (altro::SolveProjection(projection_method_, dynamics, BuildStageQuadratics(h, rows, delta), step)) {
                     // Backtracking on the max constraint violation.
                     double alpha = 1.0;
                     for (int ls = 0; ls < kMaxProjectionLineSearch; ++ls) {
                         States x_n;
                         Controls u_n;
-                        Rollout(x, u, k, K, alpha, x_n, u_n);
+                        Rollout(x, u, step.control_delta, step.feedback, alpha, x_n, u_n);
                         if (MaxConstraintViolation(x_n, u_n) < v) {
                             x = std::move(x_n);
                             u = std::move(u_n);
@@ -434,11 +414,16 @@ private:
                         }
                         alpha *= 0.5;
                     }
+                } else if (solver_->Verbose()) {
+                    cout << "ALTRO projection: " << altro::ProjectionMethodName(projection_method_)
+                         << " failed to solve at damping " << delta << "\n";
                 }
                 delta = accepted ? std::max(delta / 10.0, kDampingMin) : delta * 100.0;
             }
             if (!accepted) {
-                if (solver_->Verbose()) cout << "ALTRO projection: no improving step found, stop\n";
+                if (solver_->Verbose()) {
+                    cout << "ALTRO projection: no improving step found, stop\n";
+                }
                 break;
             }
             ++accepted_steps;
@@ -454,6 +439,7 @@ private:
     int steps_num_;
     double active_dist_ = 0.05;
     double projection_trigger_ = kDefaultProjectionTrigger;
+    altro::ProjectionMethod projection_method_ = altro::ProjectionMethod::Riccati;
 };
 
 #endif //ALILQR_ALTRO_SOLVER_HPP

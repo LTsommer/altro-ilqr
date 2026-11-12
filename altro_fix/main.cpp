@@ -46,6 +46,11 @@ constexpr double kComfortDistWeight = 3000.0;
 int main(int argc, char **argv) {
     // Directory the result CSV files are written to (must exist); defaults to the working directory.
     const std::string output_dir = argc > 1 ? argv[1] : ".";
+    const auto projection_method = argc > 2 ? altro::ParseProjectionMethod(argv[2]) : std::nullopt;
+    if (argc > 2 && !projection_method) {
+        std::cerr << "Unknown projection method: " << argv[2] << " (use riccati, kkt-eigen, or kkt-qdldl)\n";
+        return 1;
+    }
     //    test_kinematics();
     //    OCP_PROBLEM_MATRIX(double, M, N);
     bool visualize = false;
@@ -397,6 +402,9 @@ int main(int argc, char **argv) {
     // AL-iLQR followed by ALTRO solution polishing (runs only once AL-iLQR is close to feasible).
     std::unique_ptr<ALTROSolver<double, 5, 1>> altro_solver(
             new ALTROSolver<double, 5, 1>(std::move(ocp_interface), ds));
+    if (projection_method) {
+        altro_solver->SetProjectionMethod(*projection_method);
+    }
     altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_ddk;
     ilqr_x.reserve(x_res_seq.size());

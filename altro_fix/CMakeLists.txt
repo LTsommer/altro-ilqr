@@ -45,6 +45,12 @@ list(FILTER M EXCLUDE REGEX ".*CMakeFiles/.*")
 list(FILTER S EXCLUDE REGEX ".*CMakeFiles/.*")
 list(FILTER AL EXCLUDE REGEX ".*CMakeFiles/.*")
 
+set(PROJECTION_SOLVER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/augmented_ilqr/polished_altro/projection_solver.cc")
+list(REMOVE_ITEM S "${PROJECTION_SOLVER_SOURCE}")
+list(REMOVE_ITEM AL "${PROJECTION_SOLVER_SOURCE}")
+add_subdirectory(../third_party/qdldl "${CMAKE_CURRENT_BINARY_DIR}/qdldl" EXCLUDE_FROM_ALL)
+add_library(projection_solver STATIC "${PROJECTION_SOLVER_SOURCE}")
+target_link_libraries(projection_solver PUBLIC Eigen3::Eigen PRIVATE qdldlstatic)
 
 include_directories(constraint_definition)
 include_directories(cost_function)
@@ -68,7 +74,7 @@ add_executable(${PROJECT_NAME} main.cpp ${Header}
         ${M}
         ${S}
         ${AL})
-target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME} PRIVATE projection_solver)
 
 set(mp MOTION_PLANNING)
 
@@ -83,7 +89,7 @@ add_executable(mp motion_planning/motion_planning.cpp
         ${AL}
         ${MP})
 target_include_directories(mp PUBLIC motion_planning)
-target_link_libraries(mp PUBLIC Eigen3::Eigen)
+target_link_libraries(mp PRIVATE projection_solver)
 
 add_executable(test test_constraint.cpp
         ${Header}
