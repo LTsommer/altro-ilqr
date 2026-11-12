@@ -26,17 +26,23 @@ inline bool WriteCsv(const std::string &path, const std::vector<CsvColumn> &colu
         return false;
     }
     size_t rows = 0;
-    for (const auto &column : columns)
+    for (const auto &column : columns) {
         rows = std::max(rows, column.second.size());
+    }
 
     file << std::setprecision(std::numeric_limits<double>::max_digits10);
-    for (size_t c = 0; c < columns.size(); ++c)
+    for (int c = 0; c < static_cast<int>(columns.size()); ++c) {
         file << (c == 0 ? "" : ",") << columns[c].first;
+    }
     file << "\n";
-    for (size_t r = 0; r < rows; ++r) {
-        for (size_t c = 0; c < columns.size(); ++c) {
-            if (c != 0) file << ",";
-            if (r < columns[c].second.size()) file << columns[c].second[r];
+    for (int r = 0; r < static_cast<int>(rows); ++r) {
+        for (int c = 0; c < static_cast<int>(columns.size()); ++c) {
+            if (c != 0) {
+                file << ",";
+            }
+            if (r < static_cast<int>(columns[c].second.size())) {
+                file << columns[c].second[r];
+            }
         }
         file << "\n";
     }

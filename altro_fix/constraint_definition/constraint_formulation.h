@@ -6,6 +6,7 @@
 #define ALILQR_CONSTRAINT_FORMULATION_H
 
 #include "../ilqr_system_declaration.hpp"
+#include "../common/math_utils.h"
 #include "../cost_function/cost_function.hpp"
 #include "../cost_function/cost_term_config.hpp"
 

@@ -6,6 +6,7 @@
 #define ALILQR_BASIC_CONSTRAINT_H
 
 #include "../ilqr_system_declaration.hpp"
+#include "../common/math_utils.h"
 #include "../constraint_definition/constraint_formulation.h"
 #include "../constraint_definition/constraint.hpp"
 #include <iostream>
@@ -44,13 +45,13 @@ public:
         b_.resize(num_steps);
         int start_idx = is_lb ? 0 : 2; // p1: 0, p3: 2
         int lb_coeff = start_idx - 1;  // if lb: -1, rb: 1
-        for (size_t i = 0; i < num_steps; i++) {
+        for (int i = 0; i < static_cast<int>(num_steps); i++) {
             const Vector2d line_vec = p_bound[i][start_idx + 1] - p_bound[i][start_idx];
             const double c1 = 1.0 / line_vec.norm();
             const double c2 = c1 * cross_prod(p_bound[i][start_idx + 1], p_bound[i][start_idx]);
             a_[i](kXPos) = c1 * lb_coeff * (p_bound[i][start_idx + 1](kYPos) - p_bound[i][start_idx](kYPos));
             a_[i](kYPos) = c1 * lb_coeff * (p_bound[i][start_idx](kXPos) - p_bound[i][start_idx + 1](kXPos));
-            b_[i] = lb_coeff * c2 + (i < dist.size() ? dist[i] : 0.0);
+            b_[i] = lb_coeff * c2 + (i < static_cast<int>(dist.size()) ? dist[i] : 0.0);
         }
     }
 
@@ -166,12 +167,7 @@ public:
         double f_lb = one_side_cost_.Evaluate(g_lb);
         double f_rb = one_side_cost_.Evaluate(g_rb);
 
-        //        if ((step >= 5 and step <= 15) or (step >= 25 and step <= 28))
-
         val = w_plb_ * f_lb + w_prb_ * f_rb;
-        //        std::cout << "f_lb = " << f_lb << "\n"
-        //                  << "f_rb = " << f_rb << "\n"
-        //                  << "val = " << val << "\n";
         return true;
     };
 
@@ -257,7 +253,6 @@ private:
     const double w_plb_;       // path left bound weight
     const double w_prb_;       // path right bound weight
     const uint32_t steps_num_; // total number of steps
-                               //    const OneSideQuadraticCost one_side_quadratic_cost_;
     const OneSideCost one_side_cost_;
     LateralOffsetConstraint<T, M, N> line_segment_constraint_lb_;
     LateralOffsetConstraint<T, M, N> line_segment_constraint_rb_;
@@ -282,7 +277,7 @@ public:
         } else {
             a_ = 1;
             b_.reserve(step_num_);
-            for (size_t i = 0; i < step_num_; i++) {
+            for (int i = 0; i < step_num_; i++) {
                 b_.emplace_back(-config.u_max[i]);
             }
         }
@@ -305,7 +300,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > b_.size()) return false;
+        if (step > b_.size()) {
+            return false;
+        }
         lu(kDDkappa) = a_;
         return true;
     }
@@ -319,7 +316,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step >= step_num_) return false;
+        if (step >= step_num_) {
+            return false;
+        }
         return true;
     }
 
@@ -464,7 +463,6 @@ public:
 private:
     const double w_clb_; // control lower bound weight
     const double w_cub_; // control upper bound weight
-                         //    const OneSideQuadraticCost one_side_quadratic_cost_;
     const OneSideCost one_side_cost_;
     const ControlLimitConstraint<T, M, N> control_limit_constraint_lb_;
     const ControlLimitConstraint<T, M, N> control_limit_constraint_ub_;
@@ -488,13 +486,13 @@ public:
         b_.reserve(num_steps);
         if (is_lb) {
             a_ = -1;
-            for (size_t t = 0; t < num_steps; t++) {
+            for (int t = 0; t < static_cast<int>(num_steps); t++) {
                 // theta >= yaw + yaw_diff_min (yaw_diff_min <= 0); allows asymmetric bounds
                 b_.emplace_back(yaw[t] + config.yaw_diff_min);
             }
         } else {
             a_ = 1;
-            for (size_t t = 0; t < num_steps; t++) {
+            for (int t = 0; t < static_cast<int>(num_steps); t++) {
                 b_.emplace_back(-yaw[t] - config.yaw_diff_max);
             }
         }
@@ -518,7 +516,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > step_num_) return false;
+        if (step > step_num_) {
+            return false;
+        }
         lx(kTheta) = a_;
         return true;
     }
@@ -532,7 +532,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > step_num_) return false;
+        if (step > step_num_) {
+            return false;
+        }
         return true;
     }
 
@@ -592,7 +594,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > step_num_) return false;
+        if (step > step_num_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -624,7 +628,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > step_num_) return false;
+        if (step > step_num_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -825,7 +831,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > steps_num_) return false;
+        if (step > steps_num_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -903,10 +911,14 @@ public:
 
     virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
         val = 0.0;
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
         for (const auto *side : {&lb_, &rb_}) {
             double g = 0.0;
-            if (side->Evaluate(step, x, u, g) and g > 0.0) val += 0.5 * w_comfort_ * g * g;
+            if (side->Evaluate(step, x, u, g) and g > 0.0) {
+                val += 0.5 * w_comfort_ * g * g;
+            }
         }
         return true;
     };
@@ -915,10 +927,14 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
         for (const auto *side : {&lb_, &rb_}) {
             double g = 0.0;
-            if (!side->Evaluate(step, x, u, g) or g <= 0.0) continue;
+            if (!side->Evaluate(step, x, u, g) or g <= 0.0) {
+                continue;
+            }
             VecX gx;
             VecU gu;
             side->Gradient(step, x, u, gx, gu);
@@ -937,10 +953,14 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
         for (const auto *side : {&lb_, &rb_}) {
             double g = 0.0;
-            if (!side->Evaluate(step, x, u, g) or g <= 0.0) continue;
+            if (!side->Evaluate(step, x, u, g) or g <= 0.0) {
+                continue;
+            }
             VecX gx;
             VecU gu;
             side->Gradient(step, x, u, gx, gu);

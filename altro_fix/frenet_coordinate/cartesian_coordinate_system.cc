@@ -21,7 +21,6 @@ double DotProduct(const Segment2D &s1, const Segment2D &s2) {
 }
 
 double Norm(const Segment2D &s1) {
-    //    double product;
     double xx1 = s1.point[1].x - s1.point[0].x;
     double yy1 = s1.point[1].y - s1.point[0].y;
 

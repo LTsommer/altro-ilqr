@@ -13,7 +13,10 @@
 
 typedef std::unordered_map<std::type_index, std::string> TypeNames;
 
-enum BoundType { Default, Others };
+enum BoundType {
+    Default,
+    Others,
+};
 
 enum WeightIndex {
     WeightAcc,       // acceleration term
@@ -35,7 +38,6 @@ enum WeightIndex {
 };
 
 struct CostTermConfig {
-    //    bool use_finite_diff{true};
     std::unordered_map<WeightIndex, double, std::hash<int>> weights{{WeightIndex::WeightAcc, 0.0},
                                                                     {WeightIndex::WeightYawRate, 0.0},
                                                                     {WeightIndex::WeightRefOffset, 0.0},

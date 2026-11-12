@@ -7,7 +7,8 @@
 
 #include "model.h"
 #include "../ilqr_system_declaration.hpp"
-#include "../calculus.h"
+#include "../common/math_utils.h"
+#include "../common/calculus.h"
 #include "spline.h"
 #include <array>
 #include <cmath>
@@ -25,9 +26,19 @@
  * v(k+1) = v(k) + a(k) * dt + 1/2 u1(k)*dt^2
  * a(k+1) = a(k) + u1(k) * dt
  * */
-enum MModelStateIndex : unsigned int { mXPos = 0, mYPos, mTheta, mKappa, mVel, mAcc };
+enum MModelStateIndex : unsigned int {
+    mXPos = 0,
+    mYPos,
+    mTheta,
+    mKappa,
+    mVel,
+    mAcc,
+};
 
-enum MModelActionIndex : unsigned int { mJerk = 0, mDotKappa };
+enum MModelActionIndex : unsigned int {
+    mJerk = 0,
+    mDotKappa,
+};
 
 class MixModel final : public ModelBase<double, 6, 2> {
 public:
@@ -47,13 +58,14 @@ public:
         // x / y rows: derivatives of the same Gauss-Legendre position increment used in
         // ForwardCalculation (they used to be the Euler approximation, which also missed the
         // dependence on kappa, a and u through theta_{k+1} and v_{k+1}).
-        const PositionPartials p = ComputePositionPartials(x, u, dt);
-        for (const unsigned r : {mXPos, mYPos}) {
+        using P = PlanarPositionPartials;
+        const P p = PositionPartials(x, u, dt);
+        for (const int r : {mXPos, mYPos}) {
             const std::array<double, 4> &g = r == mXPos ? p.dx : p.dy;
-            fx.row(r) = g[kTheta1] * fx.row(mTheta) + g[kVel1] * fx.row(mVel);
+            fx.row(r) = g[P::kTheta1] * fx.row(mTheta) + g[P::kVel1] * fx.row(mVel);
             fx(r, r) += 1.0;
-            fx(r, mTheta) += g[kTheta0];
-            fx(r, mVel) += g[kVel0];
+            fx(r, mTheta) += g[P::kTheta0];
+            fx(r, mVel) += g[P::kVel0];
         }
         return fx;
     }
@@ -70,9 +82,10 @@ public:
         fu(mAcc, mJerk) = dt;
 
         // x / y depend on u only through theta_{k+1} and v_{k+1}
-        const PositionPartials p = ComputePositionPartials(x, u, dt);
-        fu.row(mXPos) = p.dx[kTheta1] * fu.row(mTheta) + p.dx[kVel1] * fu.row(mVel);
-        fu.row(mYPos) = p.dy[kTheta1] * fu.row(mTheta) + p.dy[kVel1] * fu.row(mVel);
+        using P = PlanarPositionPartials;
+        const P p = PositionPartials(x, u, dt);
+        fu.row(mXPos) = p.dx[P::kTheta1] * fu.row(mTheta) + p.dx[P::kVel1] * fu.row(mVel);
+        fu.row(mYPos) = p.dy[P::kTheta1] * fu.row(mTheta) + p.dy[P::kVel1] * fu.row(mVel);
         return fu;
     }
 
@@ -115,55 +128,9 @@ private:
         return x(mVel) + x(mAcc) * dt + 0.5 * u(mJerk) * sqr<double>(dt);
     }
 
-    // Partials of the position increments dx, dy (10-point Gauss-Legendre, theta and v linear
-    // between the two ends, exactly as in GaussLegendreIntegrate) w.r.t. the end values.
-    enum PartialIndex { kTheta0 = 0, kTheta1, kVel0, kVel1 };
-    struct PositionPartials {
-        std::array<double, 4> dx{};
-        std::array<double, 4> dy{};
-    };
-
-    static PositionPartials ComputePositionPartials(const State &x, const Control &u, const double dt) {
-        static constexpr std::array<double, 10> kWeights{0.0666713443086881,
-                                                         0.1494513491505806,
-                                                         0.2190863625159820,
-                                                         0.2692667193099963,
-                                                         0.2955242247147529,
-                                                         0.2955242247147529,
-                                                         0.2692667193099963,
-                                                         0.2190863625159820,
-                                                         0.1494513491505806,
-                                                         0.0666713443086881};
-        static constexpr std::array<double, 10> kNodes{-0.9739065285171717,
-                                                       -0.8650633666889845,
-                                                       -0.6794095682990244,
-                                                       -0.4333953941292472,
-                                                       -0.1488743389816312,
-                                                       0.1488743389816312,
-                                                       0.4333953941292472,
-                                                       0.6794095682990244,
-                                                       0.8650633666889845,
-                                                       0.9739065285171717};
-        const double th0 = x(mTheta), th1 = NextTheta(x, u, dt);
-        const double v0 = x(mVel), v1 = NextVel(x, u, dt);
-        PositionPartials p;
-        for (size_t i = 0; i < kNodes.size(); ++i) {
-            const double s = 0.5 * (kNodes[i] + 1.0); // position of the node in [0, 1]
-            const double w = 0.5 * dt * kWeights[i];
-            const double th = th0 + (th1 - th0) * s;
-            const double v = v0 + (v1 - v0) * s;
-            const double c = std::cos(th), sn = std::sin(th);
-            // dx = sum w * cos(th) * v,  dy = sum w * sin(th) * v
-            p.dx[kTheta0] += w * (-sn * v) * (1.0 - s);
-            p.dx[kTheta1] += w * (-sn * v) * s;
-            p.dx[kVel0] += w * c * (1.0 - s);
-            p.dx[kVel1] += w * c * s;
-            p.dy[kTheta0] += w * (c * v) * (1.0 - s);
-            p.dy[kTheta1] += w * (c * v) * s;
-            p.dy[kVel0] += w * sn * (1.0 - s);
-            p.dy[kVel1] += w * sn * s;
-        }
-        return p;
+    // Partials of the position displacement computed by ForwardCalculation.
+    static PlanarPositionPartials PositionPartials(const State &x, const Control &u, const double dt) {
+        return IntegratePlanarPositionPartials(x(mTheta), NextTheta(x, u, dt), x(mVel), NextVel(x, u, dt), dt);
     }
 
     spline sy;

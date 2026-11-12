@@ -112,6 +112,7 @@ polishing 改成 Riccati 递推后，动力学严格满足、收敛快：曲率�
 │   ├── test_constraint.cpp            # 约束构造的手工实验程序
 │   └── CMakeLists.txt
 ├── scripts/format.sh                  # 用 clang-format 格式化 altro_fix/
+├── benchmark/projection/              # 两个示例的实际 polishing 耗时与残差
 ├── benchmark/ldl_eigen_vs_qdldl/      # Eigen 与 QDLDL 的稀疏 LDLᵀ 耗时对比
 ├── third_party/                       # 随仓库提交的 Eigen 3.4.0 头文件和 QDLDL 0.1.9 源码
 └── alilqr/                            # 早期 AL-iLQR / ALTRO 实现快照
@@ -131,7 +132,7 @@ flowchart LR
     J --> K[带反馈的前向 rollout\n与 line search]
     K --> L[更新 λ、μ 并检查收敛]
     L -->|未收敛| I
-    L -->|违反量 < 0.1| M[ALTROSolver polishing\nRiccati 投影 + 带反馈前向积分]
+    L -->|违反量 < 0.1| M[ALTROSolver polishing\nRiccati 或稀疏 KKT + 前向积分]
     M --> N[优化后的状态与控制序列]
 ```
 
@@ -238,12 +239,12 @@ $$
 
 **投影问题**：记生效约束线性化为 $C\,\delta z + c = 0$， $H$ 为原始代价项的 Hessian（按平均对角元归一化，并加小的正则）。每一步求解
 
-$$
+```math
 \begin{aligned}
 \min_{\delta x,\delta u}\quad & \frac{1}{2}\delta z^T H\,\delta z+\frac{1}{2\delta}\lVert C\,\delta z+c\rVert^2\\
 \text{s.t.}\quad & \delta x_{t+1}=A_t\,\delta x_t+B_t\,\delta u_t,\qquad \delta x_0=0.
 \end{aligned}
-$$
+```
 
 动力学是硬约束，生效约束以 $1/\delta$ 的二次罚并入。 $\delta$ 很小时接近精确投影；约束互相冲突时自动退化为阻尼最小二乘的折中。 $\delta$ 按 Levenberg–Marquardt 方式自适应：步长被接受后减小，被拒绝后增大。
 
@@ -265,7 +266,27 @@ $$
 u'_t=u_t+\alpha k_t+K_t(x'_t-x_t),\qquad x'_{t+1}=f(x'_t,u'_t),
 $$
 
-$\alpha$ 从 1 开始折半，只有最大约束违反量下降时才接受。每个迭代点都是真正积分出来的，所以动力学残差严格为 0。违反量相对下降小于 0.1% 时停止。
+$\alpha$ 从 1 开始折半，只有最大约束违反量下降时才接受。违反量相对下降小于 0.1% 时停止。
+
+**稀疏 KKT** 沿用 Riccati 的二次项与线性项，并把固定的初始状态增量从决策变量中去掉。线性化动力学 $D \delta z=0$ 作为硬等式。两个后端求解同一个系统。
+
+```math
+\begin{bmatrix}
+Q & D^T \\
+D & 0
+\end{bmatrix}
+\begin{bmatrix}
+\delta z \\
+\lambda
+\end{bmatrix}
+=
+\begin{bmatrix}
+-q \\
+0
+\end{bmatrix}
+```
+
+Eigen 先检查动力学可行方向上的正曲率，再使用 `SparseLU`，QDLDL 按原变量优先的顺序做 $LDL^T$ 分解。两者都校验方程残差。KKT 用 $u'_t=u_t+\alpha\delta u_t$ 从 $x_0$ 重新积分。Riccati 和 KKT 的候选轨迹都由同一个非线性模型生成，线搜索共用最大违反量判据。
 
 > 早期版本把动力学作为等式行和生效约束一起放进全轨迹 KKT 系统、用稀疏 $LDL^T$ 求解。所有行共用阻尼，约束冲突时会牺牲动力学（投影后残差最高 0.059），每次投影 3～12 ms。改用 Riccati 递推后为 0.04～0.5 ms，残差为 0，见“优化效果”。
 
@@ -323,7 +344,7 @@ $$
 - 支持 C++17 的编译器；
 - Eigen 不需要另外安装，CMake 直接使用随仓库提交的 `third_party/eigen`（3.4.0，纯头文件）。
 
-编译和运行只依赖 Eigen。示例把结果导出为 CSV，画图由独立的 Python 脚本完成，只有画图时才需要 Python 3 和 Matplotlib。
+两个示例静态链接 `third_party/qdldl`（0.1.9），随 CMake 一起构建。示例运行后导出 CSV，画图需要 Python 3 和 Matplotlib，投影 benchmark 只需要 Python 3 标准库。
 
 若想换用别的 Eigen 版本，可在配置时传入 `-DEIGEN3_INCLUDE_DIR=/path/to/eigen`（该目录下要有 `Eigen/Dense`）。
 
@@ -346,6 +367,19 @@ cmake --build build/altro_fix --parallel
 ```
 
 构建文件定义了三个可执行目标：`alilqr`、`mp` 和 `test`。
+
+### 选择 polishing 求解器
+
+**默认使用 Riccati 递推。** `alilqr` 和 `mp` 的第一个参数是 CSV 输出目录，第二个参数可选，用来切换 polishing 的求解方法。
+
+```bash
+mkdir -p out
+./build/altro_fix/mp out            # 默认 Riccati，也可显式传 riccati
+./build/altro_fix/mp out kkt-eigen  # KKT，使用 Eigen SparseLU
+./build/altro_fix/mp out kkt-qdldl
+```
+
+C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KKTEigen` 或 `altro::ProjectionMethod::KKTQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
 
 ### 查看结果
 
@@ -373,6 +407,25 @@ python3 altro_fix/scripts/plot_results.py mp --dir out --save out/figs
 
 同一个文件里各列长度可以不同（例如参考线点数多于边界点数），较短的列末尾留空。
 
+### Polishing benchmark
+
+本地实测在 altro-ilqr 工作区完成，使用 macOS arm64、Apple Clang 14.0.3 和 CMake Release 构建。每个示例的每种方法预热 1 次，再交错运行 31 次取中位数。耗时覆盖整个 polishing，包括矩阵装配、求解和前向积分。AL-iLQR 和 CSV 导出在投影计时之外。
+
+| 示例 | 求解方法 | Polishing 耗时（ms） | 接受步数 | 投影前最大违反量 | 投影后最大违反量 | 动力学残差 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 曲率平滑 | Riccati（默认） | **0.038** | 1 | `4.35085e-3` | `2.91901e-7` | 0 |
+| 曲率平滑 | KKT · Eigen SparseLU | 0.690 | 1 | `4.35085e-3` | `2.91906e-7` | 0 |
+| 曲率平滑 | KKT · QDLDL | 0.113 | 1 | `4.35085e-3` | `2.91829e-7` | 0 |
+| 横纵向耦合 | Riccati（默认） | **1.617** | 19 | `8.58394e-3` | `3.92235e-7` | 0 |
+| 横纵向耦合 | KKT · Eigen SparseLU | 11.791 | 18 | `8.58394e-3` | `5.716e-7` | 0 |
+| 横纵向耦合 | KKT · QDLDL | 2.476 | 15 | `8.58394e-3` | `9.72913e-7` | 0 |
+
+两个示例中 Riccati 的投影耗时最短，QDLDL 用时约为 Eigen SparseLU 的 16%～21%。脚本核对各后端实际执行了投影，以及 AL-iLQR 的迭代数和投影前违反量一致。
+
+```bash
+python3 benchmark/projection/run.py build/altro_fix --runs 31
+```
+
 ### 稀疏 LDLᵀ 对比：Eigen 与 QDLDL
 
 `benchmark/ldl_eigen_vs_qdldl/` 对比 Eigen `SimplicialLDLT` 和 QDLDL 在 KKT 系统上的符号分析、数值分解和求解耗时。矩阵按早期 polishing（改用 Riccati 递推之前）的结构随机生成：代价 Hessian、动力学行和生效约束行。两个库的源码在 `third_party/` 中，不需要另外安装，也不需要 CMake：
@@ -395,7 +448,7 @@ benchmark/ldl_eigen_vs_qdldl/run.sh
 - 排序相同时两者填充量相同，QDLDL 的数值分解快约 30%、求解快约 20%；
 - “符号分析”一列不能直接比较：Eigen 的时间包含计算 AMD 排序，QDLDL 不带排序算法，这里借用了 Eigen 算出的排序；
 - 不做排序时两者的分解都要慢 30%～50%，排序比选哪个库影响更大；
-- 当前的 polishing 已不再组装 KKT 矩阵，这个对比只用于了解两个库，不影响求解器。
+- 随机矩阵沿用早期对所有约束行加阻尼的结构。当前真实轨迹的求解耗时见上面的 polishing benchmark。
 
 ### 代码格式
 

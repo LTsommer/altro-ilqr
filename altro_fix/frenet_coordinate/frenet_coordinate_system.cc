@@ -16,6 +16,58 @@ WORST CASE SCENARIO, ETC
 */
 #define POLYFIT_GAIN 1000.0
 
+namespace {
+// Curvature of a curve from its first and second derivatives, clamped to [-0.5, 0.5].
+double ClampedCurvature(double dx, double dy, double ddx, double ddy) {
+    double k = (dx * ddy - dy * ddx) / pow(dx * dx + dy * dy, 1.5);
+    if (k > 0.5) {
+        k = 0.5;
+    } else if (k < -0.5) {
+        k = -0.5;
+    }
+    return k;
+}
+
+//-----------------------------------------------------------------//
+//--- Return fit coefficient of polynomial, at least squares fit   ---//
+//--- array: value, pair.first to pair.second                    ---//
+//--- n: the number of coefficients                              ---//
+//-----------------------------------------------------------------//
+vector<double> polyfit(const vector<std::pair<double, double>> &array, int n) {
+    int num = array.size();
+    double a[num * n];
+    double b[num];
+    double c[n];
+    std::memset(c, 0, sizeof(c));
+    for (int i = 0; i < num; i++) {
+        for (int j = 0; j < n; j++) {
+            a[n * i + j] = pow(array[i].second, n - 1 - j);
+        }
+        b[i] = array[i].first;
+    }
+
+    Eigen::MatrixXd A, B, X;
+    A.resize(num, n);
+    B.resize(num, 1);
+    X.resize(n, 1);
+    for (int i = 0; i < num; i++) {
+        for (int j = 0; j < n; j++) {
+            A(i, j) = a[i * n + j];
+        }
+    }
+    for (int i = 0; i < num; i++) {
+        B(i, 0) = b[i];
+    }
+    X = A.fullPivLu().solve(B);
+    vector<double> res;
+    res.reserve(n);
+    for (int i = 0; i < n; i++) {
+        res.push_back(X(i, 0));
+    }
+    return res;
+}
+} // namespace
+
 FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
                                                spline &&x_s,
                                                spline &&y_s,
@@ -32,12 +84,7 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
         double dy = y_s.deriv<1>(tmp_s);
         double ddx = x_s.deriv<2>(tmp_s);
         double ddy = y_s.deriv<2>(tmp_s);
-        double tmp_k = (dx * ddy - dy * ddx) / pow(dx * dx + dy * dy, 1.5);
-        if (tmp_k > 0.5) {
-            tmp_k = 0.5;
-        } else if (tmp_k < -0.5) {
-            tmp_k = -0.5;
-        }
+        double tmp_k = ClampedCurvature(dx, dy, ddx, ddy);
         vec_k.push_back(tmp_k);
         vec_s.push_back(tmp_s);
         tmp_s += m_fcs_params.step_s;
@@ -87,7 +134,6 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<double> &vec_x,
                                                const FrenetCoordinateSystemParameters &fcs_params)
     : m_fcs_params(fcs_params), m_available(false) {
     ConstructFrenetCoordinateSystem(vec_x, vec_y);
-    //    int i=0;
 }
 FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<double> &vec_x,
                                                const vector<double> &vec_y,
@@ -118,7 +164,6 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
         m_available = false;
         return;
     }
-    //  vector<double> vec_s;
     assert(vec_x.size() == vec_y.size());
     vector<std::pair<double, double>> vec_c;
     vec_c.reserve(vec_x.size());
@@ -141,12 +186,7 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
         double dy = m_y_s.deriv<1>(tmp_s);
         double ddx = m_x_s.deriv<2>(tmp_s);
         double ddy = m_y_s.deriv<2>(tmp_s);
-        double tmp_k = (dx * ddy - dy * ddx) / pow(dx * dx + dy * dy, 1.5);
-        if (tmp_k > 0.5) {
-            tmp_k = 0.5;
-        } else if (tmp_k < -0.5) {
-            tmp_k = -0.5;
-        }
+        double tmp_k = ClampedCurvature(dx, dy, ddx, ddy);
         vec_k.push_back(tmp_k);
         if (tmp_s >= s_polyfit_start && tmp_s <= s_end) {
             if (tmp_s > vec_s_[0] + 30.0) {
@@ -156,14 +196,7 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
             }
         }
     }
-    //  heading_kappa = compute_path_profile(vec_x, vec_y);
-    //  vector<double> vec_h;
-    //  std::for_each(heading_kappa.begin(), heading_kappa.end(), [&vec_k, &vec_h](const std::pair<double, double>& p){
-    //      vec_h.emplace_back(p.first);
-    //      vec_k.emplace_back(p.second);
-    //  });
     m_k_s.set_points(vec_s_, vec_k);
-    //  m_h_s.set_points(vec_s, vec_h);
     // polyfit curvature of frenet coordinate
     curvature_fit_parameters = polyfit(vec_c, 4); // Fitting 3rd degree polynomial:4 coefficients
     curvature_fit_parameters.push_back(POLYFIT_GAIN);
@@ -181,8 +214,9 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
     vector<double> dxs, dys, ddxs, ddys, dddxs, dddys;
     int num = x.size();
     rst.resize(num);
-    for (auto *v : {&headings, &kappas, &dxs, &dys, &ddxs, &ddys, &dddxs, &dddys})
+    for (auto *v : {&headings, &kappas, &dxs, &dys, &ddxs, &ddys, &dddxs, &dddys}) {
         v->reserve(num);
+    }
     for (int i = 0; i < num; ++i) {
         double delta_x{0.0};
         double delta_y{0.0};
@@ -352,12 +386,14 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
     frenet.x = min_point_s;
     double cos_yaw_diff = std::abs<double>(DotProduct(roadHeading, tangent) / (Norm(roadHeading) * Norm(tangent)));
     if (distance > 1.0 /*far away from the reference line*/ &&
-        std::abs(cos_yaw_diff) > 0.1 /*tolerance for not completely ortho*/)
+        std::abs(cos_yaw_diff) > 0.1 /*tolerance for not completely ortho*/) {
         return TRANSFORM_FAILED;
-    if (cross_p > 0)
+    }
+    if (cross_p > 0) {
         frenet.y = distance;
-    else
+    } else {
         frenet.y = -distance;
+    }
     return TRANSFORM_SUCCESS;
 }
 
@@ -435,10 +471,11 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Point2D &ca
         std::abs(cos_yaw_diff) > 0.1 /*tolerance for not completely ortho*/) {
         return TRANSFORM_FAILED;
     }
-    if (cross_p > 0)
+    if (cross_p > 0) {
         frenet.y = distance;
-    else
+    } else {
         frenet.y = -distance;
+    }
     return TRANSFORM_SUCCESS;
 }
 
@@ -460,8 +497,6 @@ FrenetCoordinateSystem::FrenetCoord2CartCoord(const Point2D &frenet, Point2D &ca
         return TRANSFORM_FAILED;
     }
     Point2D ref_point{m_x_s.extrapolate(frenet.x), m_y_s.extrapolate(frenet.x)};
-    // int index = FindClosestIndex(frenet0.x, 0, m_vec_s.size(), m_vec_s);
-    // ref_point = { m_vec_x[index],m_vec_y[index] };
 
     double angle = atan2(m_y_s.deriv<1>(frenet.x), m_x_s.deriv<1>(frenet.x));
     double x1 = ref_point.x + cos(angle + PI / 2) * frenet.y;
@@ -494,7 +529,9 @@ FrenetCoordinateSystem::CartState2FrenetState(const CartesianState &cart_state, 
     cart_coord.y = cart_state.y;
     Point2D frenet_coord;
     TRANSFORM_STATUS stat = CartCoord2FrenetCoord(cart_coord, frenet_coord, cart_state.yaw);
-    if (stat == TRANSFORM_FAILED) return TRANSFORM_FAILED;
+    if (stat == TRANSFORM_FAILED) {
+        return TRANSFORM_FAILED;
+    }
     frenet_state.s = frenet_coord.x;
     frenet_state.r = frenet_coord.y;
     double ref_yaw = GetRefCurveHeading(frenet_state.s);
@@ -532,7 +569,9 @@ TRANSFORM_STATUS FrenetCoordinateSystem::FrenetState2CartState(const FrenetState
     frenet_coord.y = frenet_state.r;
     Point2D cart_coord;
     TRANSFORM_STATUS stat = FrenetCoord2CartCoord(frenet_coord, cart_coord);
-    if (stat == TRANSFORM_FAILED) return TRANSFORM_FAILED;
+    if (stat == TRANSFORM_FAILED) {
+        return TRANSFORM_FAILED;
+    }
     // Cartesian position
     cart_state.x = cart_coord.x;
     cart_state.y = cart_coord.y;
@@ -554,58 +593,4 @@ TRANSFORM_STATUS FrenetCoordinateSystem::FrenetState2CartState(const FrenetState
             (sqr(frenet_state.ds) / cos(yaw_diff)) *
                     (term_b * tan(yaw_diff) * (cart_state.curvature * term_b / cos(yaw_diff) - ref_curvature) - term_a);
     return TRANSFORM_SUCCESS;
-}
-//-----------------------------------------------------------------//
-//--- Return fit coefficient of polynomial, at least squares fit   ---//
-//--- array: value, pair.first to pair.second                    ---//
-//--- n: the number of coefficients                              ---//
-//-----------------------------------------------------------------//
-vector<double> FrenetCoordinateSystem::polyfit(vector<std::pair<double, double>> &array, int n) {
-    int num = array.size();
-    double a[num * n];
-    double b[num];
-    double c[n];
-    std::memset(c, 0, sizeof(c));
-    for (int i = 0; i < num; i++) {
-        for (int j = 0; j < n; j++) {
-            a[n * i + j] = pow(array[i].second, n - 1 - j);
-        }
-        b[i] = array[i].first;
-    }
-    // CvMat A = cvMat(num, n, CV_64FC1, a);
-    // CvMat B = cvMat(num, 1, CV_64FC1, b);
-    // CvMat X = cvMat(n, 1, CV_64FC1, c);
-
-    // cvSolve(&A,   &B,   &X,   CV_LU);
-
-    // vector<double> res;
-    // for(int i = 0; i < n; i++){
-    //     res.push_back(X.data.db[i]);
-    // }
-
-    // Eigen::Matrix< double, Eigen::Dynamic, Eigen::Dynamic > A;
-    // A = Eigen::MatrixXd::Zero( num, n);
-    // Eigen::Matrix< double, Eigen::Dynamic, Eigen::Dynamic > B;
-    // B = Eigen::MatrixXd::Zero( num, 1);
-    // Eigen::Matrix< double, Eigen::Dynamic, Eigen::Dynamic > X;
-    // X = Eigen::MatrixXd::Zero( n, 1);
-    Eigen::MatrixXd A, B, X;
-    A.resize(num, n);
-    B.resize(num, 1);
-    X.resize(n, 1);
-    for (int i = 0; i < num; i++) {
-        for (int j = 0; j < n; j++) {
-            A(i, j) = a[i * n + j];
-        }
-    }
-    for (int i = 0; i < num; i++) {
-        B(i, 0) = b[i];
-    }
-    X = A.fullPivLu().solve(B);
-    vector<double> res;
-    res.reserve(n);
-    for (int i = 0; i < n; i++) {
-        res.push_back(X(i, 0));
-    }
-    return res;
 }

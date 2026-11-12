@@ -6,15 +6,17 @@
 #define ALILQR_COST_TERMS_HPP
 
 #include "../../ilqr_system_declaration.hpp"
+#include "../../common/math_utils.h"
 #include "../../cost_function/cost_function.hpp"
 #include "../cost_function/cost_term_config.hpp"
 #include "../mix_model.h"
+#include "../lateral_kinematics.h"
 
 /*
  * state     [x, y, theta, kappa, vel, acc]
  * control   [jerk, kappa_dot]
  * state_space function f(x, u) is implemented in mix_model.h
- * calculus is implemented in calculus.h by using a Gauss-Legendre Integration.
+ * calculus is implemented in common/calculus.h by using a Gauss-Legendre Integration.
  * */
 
 /* final state cost function is working when step = horizon
@@ -36,9 +38,11 @@ public:
     virtual std::string GetName() const override { return std::string("CentripetalAccCostFunc"); }
 
     virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
 
-        val = 0.5 * sqr(sqr(x(mVel)) * x(mKappa)) * w_lat_acc_;
+        val = 0.5 * sqr(LateralAcc(x)) * w_lat_acc_;
         return true;
     };
 
@@ -49,7 +53,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
 
         lx(mVel) = doppel(cube(x(mVel)) * sqr(x(mKappa))) * w_lat_acc_;
         lx(mKappa) = sqr(sqr(x(mVel))) * x(mKappa) * w_lat_acc_;
@@ -68,7 +74,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
 
         lxx(mVel, mVel) = doppel(3 * sqr(x(mVel)) * sqr(x(mKappa))) * w_lat_acc_;
         lxx(mVel, mKappa) = doppel(2 * cube(x(mVel)) * x(mKappa)) * w_lat_acc_;
@@ -95,12 +103,6 @@ public:
 
     virtual std::string GetName() const override { return std::string("CentripetalJerkCostFunc"); }
 
-    // Lateral jerk 2 * v * a * kappa + v^2 * kappa_dot, computed from the (x, u) being evaluated.
-    // (It used to be cached by SetCoeTerm(), which was never called, so this cost was always 0.)
-    static double CoeTerm(const State &x, const Control &u) {
-        return doppel(x(mVel) * x(mAcc) * x(mKappa)) + sqr(x(mVel)) * u(mDotKappa);
-    }
-
     //    centripetal jerk term = 1/2 * w * (2 * vel * acc * kappa + vel ^ 2 * kappa_dot)^2
     virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
         if (step >= horizon) {
@@ -108,7 +110,7 @@ public:
             return false;
         }
 
-        const double coe_term = CoeTerm(x, u);
+        const double coe_term = LateralJerk(x, u); // lateral jerk at (x, u)
         val = 0.5 * sqr(coe_term) * w_lat_jerk_;
         return true;
     };
@@ -122,8 +124,10 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step >= horizon) return false;
-        const double coe_term = CoeTerm(x, u);
+        if (step >= horizon) {
+            return false;
+        }
+        const double coe_term = LateralJerk(x, u); // lateral jerk at (x, u)
         lx(mVel) = coe_term * doppel(x(mAcc) * x(mKappa) + x(mVel) * u(mDotKappa)) * w_lat_jerk_;
         lx(mKappa) = coe_term * doppel(x(mVel) * x(mAcc)) * w_lat_jerk_;
         lx(mAcc) = coe_term * doppel(x(mVel) * x(mKappa)) * w_lat_jerk_;
@@ -140,8 +144,10 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step >= horizon) return false;
-        const double coe_term = CoeTerm(x, u);
+        if (step >= horizon) {
+            return false;
+        }
+        const double coe_term = LateralJerk(x, u); // lateral jerk at (x, u)
         /* df / dv = w * (2 * vel * acc * kappa + vel ^ 2 * kappa_dot) * (2 * acc * kappa + 2 * vel * kappa_dot)
          * df / dk = w * (2 * vel * acc * kappa + vel ^ 2 * kappa_dot) * (2 * vel * acc)
          * df / da = w * (2 * vel * acc * kappa + vel ^ 2 * kappa_dot) * (2 * vel * kappa)
@@ -208,7 +214,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step >= horizon) return false;
+        if (step >= horizon) {
+            return false;
+        }
 
         lu(mDotKappa) = w_dot_jerk_ * u(mDotKappa);
         return true;
@@ -223,7 +231,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step >= horizon) return false;
+        if (step >= horizon) {
+            return false;
+        }
 
         luu(mDotKappa, mDotKappa) = w_dot_jerk_;
         return true;
@@ -261,7 +271,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step >= horizon) return false;
+        if (step >= horizon) {
+            return false;
+        }
 
         lu(mJerk) = w_jerk_ * u(mJerk);
         return true;
@@ -276,7 +288,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step >= horizon) return false;
+        if (step >= horizon) {
+            return false;
+        }
 
         luu(mJerk, mJerk) = w_jerk_;
         return true;
@@ -316,7 +330,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > horizon) return false;
+        if (step > horizon) {
+            return false;
+        }
 
         lx(mVel) = w_vel_diff_ * (x(mVel) - velocity_[step]);
         return true;
@@ -331,8 +347,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon) // same range as Evaluate / Gradient (was >=, dropping the last step)
+        if (step > horizon) { // same range as Evaluate / Gradient (was >=, dropping the last step)
             return false;
+        }
 
         lxx(mVel, mVel) = w_vel_diff_;
         return true;

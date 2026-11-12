@@ -11,18 +11,14 @@
 #include "types.h"
 #include "spline.h"
 #include "vec2d.h"
+#include "../common/math_utils.h"
 
 using std::vector;
 
-enum TRANSFORM_STATUS { TRANSFORM_SUCCESS = 0, TRANSFORM_FAILED };
-
-// const double m_fcs_params.zero_speed = 0.1;  // Speed threshold where the
-// particle is considered as stopped const double m_fcs_params.precision = 0.01;
-// const double m_fcs_params.step_s = 0.3;
-// const double m_fcs_params.coarse_step_s = 1.0;
-// const double m_fcs_params.optimization_gamma = 0.5;  // Gradient descending
-// parameter const int m_fcs_params.max_iter = 15;  // Max iteration for the
-// Newton's method
+enum TRANSFORM_STATUS {
+    TRANSFORM_SUCCESS = 0,
+    TRANSFORM_FAILED,
+};
 
 struct FrenetCoordinateSystemParameters {
     double zero_speed_threshold;
@@ -163,8 +159,6 @@ public:
     //! with yaw information to better determine the actual frenet coordinate
     TRANSFORM_STATUS CartCoord2FrenetCoord(const Point2D &cart, Point2D &frenet, double yaw) const;
     TRANSFORM_STATUS CartCoord2FrenetCoord(const Vec2d &cart, Vec2d &frenet, double yaw) const;
-    // std::vector<double> CartCoord2FrenetCoord1(
-    //    const Point2D& cart, Point2D& frenet) const;
     //! Frenet coordinate to cartesian coordinate
     TRANSFORM_STATUS FrenetCoord2CartCoord(const Point2D &frenet, Point2D &cart) const;
     TRANSFORM_STATUS FrenetCoord2CartCoord(const Vec2d &frenet, Vec2d &cart) const;
@@ -179,7 +173,6 @@ public:
     //! Heading of the ref curve
     double GetRefCurveHeading(double s) const {
         assert(s <= m_length && s >= 0);
-        //    return m_h_s.extrapolate(s);
         return atan2(m_y_s.deriv<1>(s), m_x_s.deriv<1>(s));
     }
     Point2D GetRefCurveUnitTangent(double s) const {
@@ -200,11 +193,12 @@ public:
     double GetRefCurveAvgHeading(double s, double delta_s) const {
         assert(s <= m_length && s >= 0);
         double real_delta = std::min<double>(m_length - s, delta_s);
-        if (real_delta > 0.1)
+        if (real_delta > 0.1) {
             return atan2(m_y_s.extrapolate(s + real_delta) - m_y_s.extrapolate(s),
                          m_x_s.extrapolate(s + real_delta) - m_x_s.extrapolate(s));
-        else
+        } else {
             return GetRefCurveHeading(s);
+        }
     }
     //! Curvature of the ref curve
     double GetRefCurveCurvature(double s) const {
@@ -224,20 +218,8 @@ public:
 
     double GetSlength() const { return m_length; }
 
-    std::vector<double> polyfit(vector<std::pair<double, double>> &array, int n);
-
     const std::vector<double> &GetCurveParameters() const { return curvature_fit_parameters; }
 };
-
-inline double twice(double x) {
-    return x + x;
-}
-inline double sqr(double x) {
-    return x * x;
-}
-inline double cube(double x) {
-    return x * x * x;
-}
 
 // Squared distance to a point on the curve (represented by the offset s)
 __attribute__((always_inline)) inline double FrenetCoordinateSystem::SquaredDistanceToOffSetOnCurve(
@@ -250,21 +232,16 @@ __attribute__((always_inline)) inline double FrenetCoordinateSystem::SquaredDist
 // Gradient of the previous function
 __attribute__((always_inline)) inline double FrenetCoordinateSystem::GradientSquaredDistanceToOffSetOnCurve(
         double s, const Point2D &cart0) const {
-    // return 2.0 * m_x_s.deriv(1, s) * (m_x_s(s) - cart0.x) +
-    //        2.0 * m_y_s.deriv(1, s) * (m_y_s(s) - cart0.y);
-    return twice(m_x_s.deriv<1>(s) * (m_x_s.extrapolate(s) - cart0.x) +
-                 m_y_s.deriv<1>(s) * (m_y_s.extrapolate(s) - cart0.y));
+    return doppel(m_x_s.deriv<1>(s) * (m_x_s.extrapolate(s) - cart0.x) +
+                  m_y_s.deriv<1>(s) * (m_y_s.extrapolate(s) - cart0.y));
 }
 
 // Hessian of the distance function
 __attribute__((always_inline)) inline double FrenetCoordinateSystem::HessianSquaredDistanceToPointOnCurve(
         double s, const Point2D &cart0) const {
-    // 2.0 * m_x_s.deriv(2, s) * (m_x_s(s) - cart0.x) +
-    //        2.0 * m_y_s.deriv(2, s) * (m_y_s(s) - cart0.y) +
-    //        2.0 * pow(m_x_s.deriv(1, s), 2) + 2.0 * pow(m_y_s.deriv(1, s), 2);
-    return twice(m_x_s.deriv<2>(s) * (m_x_s.extrapolate(s) - cart0.x) +
-                 m_y_s.deriv<2>(s) * (m_y_s.extrapolate(s) - cart0.y) + sqr(m_x_s.deriv<1>(s)) +
-                 sqr(m_y_s.deriv<1>(s)));
+    return doppel(m_x_s.deriv<2>(s) * (m_x_s.extrapolate(s) - cart0.x) +
+                  m_y_s.deriv<2>(s) * (m_y_s.extrapolate(s) - cart0.y) + sqr(m_x_s.deriv<1>(s)) +
+                  sqr(m_y_s.deriv<1>(s)));
 }
 
 #endif

@@ -4,6 +4,7 @@
 #include <iostream>
 #include "model/smooth_kappa_model.h"
 #include "ilqr_system_declaration.hpp"
+#include "common/math_utils.h"
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_terms.h"
 #include "csv_writer.hpp"
@@ -46,8 +47,11 @@ constexpr double kComfortDistWeight = 3000.0;
 int main(int argc, char **argv) {
     // Directory the result CSV files are written to (must exist); defaults to the working directory.
     const std::string output_dir = argc > 1 ? argv[1] : ".";
-    //    test_kinematics();
-    //    OCP_PROBLEM_MATRIX(double, M, N);
+    const auto projection_method = argc > 2 ? altro::ParseProjectionMethod(argv[2]) : std::nullopt;
+    if (argc > 2 && !projection_method) {
+        std::cerr << "Unknown projection method: " << argv[2] << " (use riccati, kkt-eigen, or kkt-qdldl)\n";
+        return 1;
+    }
     bool visualize = false;
     vector<double> centerline_x{
             458826.4544207164,  458828.53126436437, 458830.61546950776, 458832.7064482603,  458834.79742701043,
@@ -83,20 +87,11 @@ int main(int argc, char **argv) {
             4404625.829429328};
     vector_norm(centerline_x);
     vector_norm(centerline_y);
-    //    vector<double> centerline_x{-29, -28.073, -27.1461, -26.2195, -25.2932, -24.3675, -23.4423, -22.5179, -21.5944, -20.6719, -19.7506, -18.8305, -17.9115, -16.9932, -16.0749, -15.156, -14.2358, -13.3138, -12.3894, -11.4619, -10.5307, -9.59494, -8.6546, -7.70999, -6.76301, -5.8163, -4.87223, -3.93307, -3.00116, -2.07885, -1.16851, -0.27247, 0.606931, 1.46722, 2.30408, 3.11193, 3.88402, 4.61319, 5.29673, 5.93554, 6.53708, 7.11347, 7.67582, 8.23435, 8.79929, 9.38099, 9.9907, 10.6403, 11.3369, 12.0837, 12.8782, 13.7133, 14.5829, 15.4816, 16.4041, 17.3444, 18.297, 19.2564, 20.2168, 21.1722, 22.1195, 23.059, 23.9914, 24.918, 25.84, 26.7585, 27.6745, 28.589, 29.5032, 30.4184, 31.3354, 32.2546, 33.1761, 34.0994, 35.0242, 35.95, 36.8767, 37.8039, 38.7312, 39.6583, 40.5848, 41.5108, 42.4362, 43.3612, 44.2858, 45.2101, 46.1342, 47.0581, 47.9819, 48.9057, 49.8297, 50.7537, 51.6779, 52.6022, 53.5267, 54.4512, 55.3759, 56.3006, 57.2254, 58.1503, 59.0751, 60};
-    //    vector<double> centerline_y{5, 4.98539, 4.97153, 4.95919, 4.94911, 4.94205, 4.93878, 4.94008, 4.94661, 4.9591, 4.97858, 5.00585, 5.0399, 5.07889, 5.12007, 5.16039, 5.19696, 5.22699, 5.24779, 5.25664, 5.25017, 5.22511, 5.18078, 5.11855, 5.0466, 4.97622, 4.91764, 4.88062, 4.87524, 4.91171, 5.00002, 5.1501, 5.37243, 5.67685, 6.06321, 6.52507, 7.05561, 7.64774, 8.29326, 8.9831, 9.70631, 10.4506, 11.2041, 11.9548, 12.6912, 13.4019, 14.0742, 14.6951, 15.256, 15.7527, 16.186, 16.5618, 16.8847, 17.1588, 17.3879, 17.5765, 17.729, 17.8493, 17.9419, 18.011, 18.0602, 18.0921, 18.1092, 18.1137, 18.1081, 18.0948, 18.076, 18.0542, 18.0317, 18.0112, 17.9948, 17.9831, 17.9764, 17.9737, 17.974, 17.9768, 17.9814, 17.987, 17.9929, 17.9982, 18.0025, 18.0056, 18.0074, 18.0082, 18.0083, 18.0076, 18.0065, 18.005, 18.0034, 18.0017, 18.0003, 17.9991, 17.9982, 17.9977, 17.9974, 17.9973, 17.9975, 17.9978, 17.9982, 17.9988, 17.9994, 18};
-    //    vector<double> ref_x{-19.7506, -18.8305, -17.9109, -16.9913, -16.0712, -15.1504, -14.229, -13.3071, -12.3846, -11.4614, -10.5363, -9.60804, -8.67375, -7.73174, -6.78169, -5.82796, -4.87636, -3.93259, -3.00292, -2.09295, -1.20701, -0.348906, 0.480788, 1.28814, 2.07545, 2.84559, 3.59578, 4.32201, 5.02497, 5.70644, 6.37277, 7.03031, 7.6826, 8.33153, 8.97809, 9.6238, 10.2733, 10.9333, 11.6132, 12.325, 13.0742, 13.8641, 14.6916, 15.554, 16.448, 17.3678, 18.3068, 19.2581, 20.2143, 21.1682, 22.1156, 23.056, 23.9899, 24.9182, 25.8417, 26.7613, 27.6781, 28.5931, 29.5072, 30.4217, 31.3378, 32.256, 33.1767, 34.0995, 35.024, 35.9497, 36.8764, 37.8036, 38.731, 39.6582, 40.5848, 41.5108, 42.4363, 43.3612, 44.2858, 45.2101, 46.1342, 47.0581, 47.9819, 48.9057, 49.8296, 50.7537, 51.6779, 52.6022, 53.5267, 54.4512, 55.3759, 56.3006, 57.2254, 58.1503};
-    //    vector<double> ref_y{4.97858, 5.00484, 5.0246, 5.03615, 5.03729, 5.02823, 5.01108, 4.98817, 4.96164, 4.93309, 4.90358, 4.87374, 4.84474, 4.81969, 4.80483, 4.80917, 4.83898, 4.89869, 4.99269, 5.1247, 5.29817, 5.5176, 5.78959, 6.11839, 6.50542, 6.94828, 7.4409, 7.97929, 8.56151, 9.18289, 9.83737, 10.5135, 11.199, 11.8818, 12.5506, 13.1939, 13.8004, 14.3629, 14.8784, 15.3528, 15.7894, 16.1923, 16.562, 16.8959, 17.1911, 17.446, 17.66, 17.8343, 17.9717, 18.0765, 18.1531, 18.2059, 18.2389, 18.2556, 18.2593, 18.2528, 18.2388, 18.2192, 18.1962, 18.172, 18.1484, 18.1263, 18.106, 18.0873, 18.0703, 18.0551, 18.0419, 18.031, 18.022, 18.0147, 18.0087, 18.0039, 18.0002, 17.9974, 17.9956, 17.9944, 17.9938, 17.9934, 17.9933, 17.9934, 17.9936, 17.994, 17.9945, 17.995, 17.9956, 17.9962, 17.9968, 17.9975, 17.9982, 17.9989};
     vector<double> rx, ry;
     int start_node = 10;
     int end_node = 70;
     rx.assign(centerline_x.begin() + start_node, centerline_x.begin() + end_node);
     ry.assign(centerline_y.begin() + start_node, centerline_y.begin() + end_node);
-    //    vector<Vec2d> rxy;
-    //    rxy.resize(rx.size());
-    //    for (int i = 0; i < rx.size(); ++i) {
-    //        rxy[i] = std::move(Vec2d(rx[i], ry[i]));
-    //    }
     vector<double> kappa, yaw, velocity, acceleration, ds, s, dt;
     vector<Vector2d> p_ref;
 
@@ -188,9 +183,6 @@ int main(int argc, char **argv) {
         right_safe_dist.emplace_back(half_veh_width + min_safe_buffer);
         left_comfort_dist.emplace_back(half_veh_width + max_safe_buffer);
         right_comfort_dist.emplace_back(half_veh_width + max_safe_buffer);
-        //        cout << "heading = " << h << "\n";
-        //        cout << "kappa = " << k << "\n";
-        //        cout << "vel = " << v << "\n";
         yaw.emplace_back(h);
         kappa.emplace_back(k);
         velocity.emplace_back(v);
@@ -207,22 +199,16 @@ int main(int argc, char **argv) {
         if (i > 0) {
             double step = s_new - s_old;
             double t = (s_new - s_old) / velocity.back();
-            //            cout << "delta vel = " << velocity[i] - velocity[i - 1] << "\n";
             double acc = (velocity[i] - velocity[i - 1]) / t;
             // The speed profile comes from a curvature-based speed limit and can jump between
             // samples; keep the reference acceleration (used by the lateral comfort cost) within
             // [-2, 4] m/s^2.
             acc = std::min(4.0, std::max(-2.0, acc));
-            //            cout << "step = " << step << "\n";
-            //            cout << "acc = " << acc << "\n";
             ds.emplace_back(step);
             dt.emplace_back(t);
             acceleration.emplace_back(acc);
-            //            if (i == rx.size() - 1)
-            //                acceleration.emplace_back(acceleration.back());
         }
         s_old = s_new;
-        //        cout << "\n";
     }
     // The cost terms read the reference acceleration at every node. The loop above gives one value
     // per interval; the terminal node uses 0.
@@ -237,17 +223,6 @@ int main(int argc, char **argv) {
         rb_x.emplace_back(bound[2](0));
         rb_y.emplace_back(bound[2](1));
     }
-
-    //    double w_ref_offset = 5000.0;
-    //    double w_kappa = 1000.0;
-    //    double w_dkappa = 2000.0;
-    //    double w_u = 10000.0;
-    //    double w_clb = 10000.0;
-    //    double w_cub = 10000.0;
-    //    double w_plb = 5000.0;
-    //    double w_prb = 5000.0;
-    //    double w_jerk = 50.0;
-    //    double w_acc = 100.0;
 
     double w_ref_offset = 3000.0;
     double w_kappa = 1000.0;
@@ -356,7 +331,6 @@ int main(int argc, char **argv) {
     ocp_interface->SetModel(std::make_unique<SmoothKappaModel>());
     cout << "all cost functions and forward model are loaded\n";
 
-    //    std::unique_ptr<ILQRSolver<double, 5, 1>> solver(new ILQRSolver(std::move(ocp_interface), ds));
     OCP_VARIABLES(double, 5, 1)
     State x0;
     x0(kXPos) = rx.front();
@@ -376,27 +350,26 @@ int main(int argc, char **argv) {
         const double k_heading = kInitHeadingGain;
         SmoothKappaModel model;
         State x = x0;
-        for (size_t t = 0; t < ds.size(); ++t) {
+        for (int t = 0; t < static_cast<int>(ds.size()); ++t) {
             Vec2d sl;
             (void)fcs->CartCoord2FrenetCoord(Vec2d(x(kXPos), x(kYPos)), sl);
             const double s_next = std::min(sl.x() + ds[t], fcs->GetSlength());
             const double heading_err = x(kTheta) - fcs->GetRefCurveHeading(sl.x());
-            const double kappa_cmd = fcs->GetRefCurveCurvature(s_next) - k_lat * sl.y() -
-                                     k_heading * std::atan2(std::sin(heading_err), std::cos(heading_err));
+            const double kappa_cmd =
+                    fcs->GetRefCurveCurvature(s_next) - k_lat * sl.y() - k_heading * NormalizeAngle(heading_err);
             const double dkappa_des = (kappa_cmd - x(kKappa)) / (2.0 * ds[t]);
             u0[t](kDDkappa) = std::min(u_max, std::max(u_min, (dkappa_des - x(kDkappa)) / ds[t]));
             x = model.ForwardCalculation(x, u0[t], ds[t]);
         }
     }
-    //    for (int i = 0; i < u0.size(); ++i)
-    //        u0[i][Acc] = acceleration[i];
     States x_res_seq;
     Controls u_res_seq;
-    //    solver->Solve(x0, u0, x_res_seq, u_res_seq);
-    //
     // AL-iLQR followed by ALTRO solution polishing (runs only once AL-iLQR is close to feasible).
     std::unique_ptr<ALTROSolver<double, 5, 1>> altro_solver(
             new ALTROSolver<double, 5, 1>(std::move(ocp_interface), ds));
+    if (projection_method) {
+        altro_solver->SetProjectionMethod(*projection_method);
+    }
     altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_ddk;
     ilqr_x.reserve(x_res_seq.size());
@@ -412,9 +385,9 @@ int main(int argc, char **argv) {
         ilqr_k.emplace_back(x_res_seq[i][kKappa]);
         ilqr_dk.emplace_back(x_res_seq[i][kDkappa]);
         // One control fewer than states: the ddkappa column is one row shorter.
-        if (i < u_res_seq.size()) ilqr_ddk.emplace_back(u_res_seq[i][kDDkappa]);
-        //        ilqr_v.emplace_back(x_res_seq[i][V]);
-        //        cout << x_res_seq[i][X] << endl;
+        if (i < static_cast<int>(u_res_seq.size())) {
+            ilqr_ddk.emplace_back(u_res_seq[i][kDDkappa]);
+        }
     }
 
     vector<double> smooth_v;
@@ -423,69 +396,6 @@ int main(int argc, char **argv) {
         double v = std::min(vel_max, std::max(std::sqrt(acc_max / abs(k)), vel_min));
         smooth_v.emplace_back(v);
     });
-
-    //    MatrixZs jac;
-    //    for (int i = 0; i < 3; ++i) {
-    //        VecX lx;
-    //        VecU lu;
-    //        lx.setOnes();
-    //        lu.setZero();
-    //        MatrixZ j;
-    //        j << lx, lu;
-    //        jac.emplace_back(j);
-    //    }
-    //
-    //    int rows = jac.size();
-    //    int cols = 6;
-
-    //    Eigen::MatrixXd J;
-    //    J = Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, 6, Eigen::RowMajor>>(
-    //            reinterpret_cast<double*>(jac.data()), rows, cols);
-
-    //    cout << J << endl;
-
-    //    MatrixXd demo(10, 1);
-    //    cout << demo.topRows(2) << endl;
-
-    //    MatrixHZ t_hessian;
-    //    MatrixLXX t_lxx;
-    //    MatrixLUU t_luu;
-    //    MatrixLXU t_lxu;
-    //    t_lxx.setZero();
-    //    t_luu.setZero();
-    //    t_lxu.setZero();
-    //    t_hessian << t_lxx,             t_lxu,
-    //                 t_lxu.transpose(), t_luu;
-    //    cout << "hessian matrix : \n"
-    //         << t_hessian << "\n";
-
-    //    config.yaw = ilqr_h;
-    //    vector<double> i_x;
-    //    vector<double> i_y;
-    //    vector<double> i_h;
-    //    vector<double> i_v;
-    //    mp(ilqr_x, ilqr_y, config, dt, i_x, i_y, i_h, i_v);
-    //
-    //    FrenetCoordinateSystem ilqr_fcs(ilqr_x, ilqr_y, fcs_params);
-    //    vector<double> ilqr_s = ilqr_fcs.get_vec_s();
-    //    vector<double> i_h, i_k, i_dk;
-    //    std::for_each(ilqr_s.begin(), ilqr_s.end(), [&i_h, &i_k, &i_dk, &ilqr_fcs](const double ds){
-    //
-    //            i_h.emplace_back(ilqr_fcs.GetRefCurveHeading(ds));
-    //            i_k.emplace_back(ilqr_fcs.GetRefCurveCurvature(ds));
-    //            i_dk.emplace_back(ilqr_fcs.GetRefCurveDCurvature(ds));
-    //    });
-    //    cout << ilqr_s.size() << " " << i_h.size() << " " << i_k.size() << " " << i_dk.size() << endl;
-    //
-    //    Vector2d p3(1, 2);
-    //    Vector2d p4(4, 5);
-    //    Vector2d p(1, 3);
-    //    Vector2d v = p4 - p3;
-    //    Vector2d w = p - p3;
-    //    auto dis = (w(0) * v(1) -w(1) * v(0)) / v.norm();
-    //    double distance = cross_prod(w, v) / v.norm();
-    ////    double dis = (p - p3).cross(p4 - p3) / (p4 - p3).norm();
-    //
 
     // Export the result; plot it with scripts/plot_results.py.
     WriteCsv(output_dir + "/alilqr_trajectory.csv",
@@ -505,30 +415,5 @@ int main(int argc, char **argv) {
               {"right_x", rb_x},
               {"right_y", rb_y}});
 
-    //    FinalVelDiffCostFunc demo(config);
-    //    Type_names type_names;
-    //    type_names[std::type_index(typeid(AccCostFunc))] = std::string("AccCostFunc");
-    //    type_names[std::type_index(typeid(YawRateCostFunc))] = std::string("YawRateCostFunc");
-    //    type_names[std::type_index(typeid(OffsetCostFunc))] = std::string("OffsetCostFunc");
-    //    type_names[std::type_index(typeid(VelDiffCostFunc))] = std::string("VelDiffCostFunc");
-    //    type_names[std::type_index(typeid(FinalOffsetCostFunc))] = std::string("FinalOffsetCostFunc");
-    //    type_names[std::type_index(typeid(FinalAccCostFunc))] = std::string("FinalAccCostFunc");
-    //    type_names[std::type_index(typeid(FinalYawRateCostFunc))] = std::string("FinalYawRateCostFunc");
-    //    type_names[std::type_index(typeid(FinalVelDiffCostFunc))] = std::string("FinalVelDiffCostFunc");
-
-    //    cout << type_names[demo.get_type_index()] << endl;
-    //    cout << demo.get_type_index() << endl;
-
-    //    Vector2d dV;
-    //    dV.setZero();
-    //    VecU k;
-    //    k << 2.0, 1.0;
-    //    VecU r;
-    //    r << 1.0, 2.0;
-    //    MatrixLUU Q;
-    //    Q.setIdentity();
-    //    dV(0) = r.transpose() * k;
-    //    dV(1) = r.transpose() * Q * r;
-    //    cout << dV << endl;
     return 0;
 }

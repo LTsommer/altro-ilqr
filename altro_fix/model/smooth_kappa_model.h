@@ -6,6 +6,7 @@
 #define CILQR_SMOOTH_KAPPA_MODEL_H
 
 #include "../ilqr_system_declaration.hpp"
+#include "../common/math_utils.h"
 #include "model.h"
 #include <cmath>
 

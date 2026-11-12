@@ -61,7 +61,9 @@ void AppendRawConstraint(const Sub &sub,
                          const Eigen::Matrix<T, N, 1> &u,
                          RawConstraintRows<T, M, N> &out) {
     RawConstraintRow<T, M, N> row;
-    if (!sub.Evaluate(step, x, u, row.g)) return;
+    if (!sub.Evaluate(step, x, u, row.g)) {
+        return;
+    }
     sub.Gradient(step, x, u, row.gx, row.gu);
     out.push_back(row);
 }
