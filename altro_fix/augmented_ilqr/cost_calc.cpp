@@ -11,7 +11,9 @@ double CostUnion<T, M, N>::Evaluate(const int step, const State &x, const Contro
     for (const auto &ct : cost_terms_) {
         double cost_val = 0.0;
         bool success = ct->Evaluate(step, x, u, cost_val);
-        if (success) total_val += cost_val;
+        if (success) {
+            total_val += cost_val;
+        }
     }
 
     for (const auto &cons_ptr : eqs_) {
@@ -25,7 +27,9 @@ double CostUnion<T, M, N>::Evaluate(const int step, const State &x, const Contro
     for (const auto &cons_ptr : ineqs_) {
         bool success = cons_ptr->Evaluate(step, x, u);
         double cost_val = cons_ptr->AugLagVal();
-        if (success) total_val += cost_val;
+        if (success) {
+            total_val += cost_val;
+        }
     }
 
     return total_val;
@@ -116,10 +120,12 @@ void CostUnion<T, M, N>::CalcAugLagConstraintHessian(const int step,
         cuu += cur_cu * mu * cur_cu.transpose();
         cxu += cur_cx * mu * cur_cu.transpose();
     };
-    for (const auto &cons_ptr : eqs_)
+    for (const auto &cons_ptr : eqs_) {
         add_gn_term(cons_ptr);
-    for (const auto &cons_ptr : ineqs_)
+    }
+    for (const auto &cons_ptr : ineqs_) {
         add_gn_term(cons_ptr);
+    }
 }
 
 template<typename T, unsigned M, unsigned N>
@@ -131,14 +137,18 @@ void CostUnion<T, M, N>::CalcTerminalCostToGo(const State &x) {
         VecU cur_lu;
         bool success = ct->Gradient(horizon_, x, Control::Zero(), cur_lx, cur_lu);
         // AL-iLQR-tutorial 38
-        if (success) pN += cur_lx;
+        if (success) {
+            pN += cur_lx;
+        }
 
         MatrixLXX lxx;
         MatrixLUU luu;
         MatrixLXU lxu;
         success = ct->Hessian(horizon_, x, Control::Zero(), lxx, luu, lxu);
         // AL-iLQR-tutorial 39
-        if (success) PN += lxx;
+        if (success) {
+            PN += lxx;
+        }
     }
 
     for (const auto &cons_ptr : eqs_) {
@@ -184,24 +194,6 @@ void CostUnion<T, M, N>::EvaluateConstraints(const States &x, const Controls &u)
         }
     }
 }
-
-//template<typename T, unsigned M, unsigned N>
-//double CostUnion<T, M, N>::GetMaxViolation() {
-//    for (const auto &cons_ptr : eqs_) {
-//        double cur_max_violation = cons_ptr->MaxViolation();
-//        max_violation_ = std::max(max_violation_, cur_max_violation);
-//    }
-//    for (const auto &cons_ptr : ineqs_) {
-//        double cur_max_violation = cons_ptr->MaxViolation();
-//        max_violation_ = std::max(max_violation_, cur_max_violation);
-//    }
-//}
-
-//template<typename T, unsigned M, unsigned N>
-//void CostUnion<T, M, N>::ResetViolations() {
-//    eqc_violations_.setConstant(Eigen::Infinity);
-//    ineqc_violations_.setConstant(Eigen::Infinity);
-//}
 
 template class CostUnion<double, 5, 1>;
 

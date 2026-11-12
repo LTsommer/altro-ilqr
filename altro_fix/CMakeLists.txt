@@ -61,7 +61,9 @@ include_directories(augmented_ilqr/polished_altro)
 include_directories(frenet_coordinate)
 
 set(Header
-        calculus.h
+        common/calculus.h
+        common/trig_table.h
+        common/math_utils.h
         ilqr_system_declaration.hpp
         csv_writer.hpp
         clock.hpp)

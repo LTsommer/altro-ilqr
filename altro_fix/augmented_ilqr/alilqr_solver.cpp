@@ -4,6 +4,7 @@
 
 #include "alilqr_solver.h"
 #include "../clock.hpp"
+#include "../common/math_utils.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -15,7 +16,11 @@ template<typename T, unsigned int M, unsigned int N>
 void ALILQRSolver<T, M, N>::Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq) {
     std::unique_ptr<ILQRSolverState<T, M, N>> ilqr_state =
             std::make_unique<ILQRSolverState<T, M, N>>(step_sizes().size());
-    InitTraj(x0, u0, ilqr_state.get());
+    // Everything after this works on the initial trajectory; if its rollout is not finite (NaN /
+    // inf in x0, u0 or the resulting states / cost) there is nothing valid to return.
+    if (!std::isfinite(InitTraj(x0, u0, ilqr_state.get()))) {
+        throw std::runtime_error("ALILQRSolver: the rollout of the initial guess is not finite");
+    }
     GenerateTrajectory(ilqr_state.get());
     x_res_seq = ilqr_state->x_seq_;
     u_res_seq = ilqr_state->u_seq_;
@@ -33,7 +38,6 @@ double ALILQRSolver<T, M, N>::InitTraj(const State &x_0,
 
     // Call forward_pass to get xs, us, cost
     double cost_ini = RollOut(ilqr_state->x0_, ilqr_state->u_seq_, ilqr_state);
-    //  NLOGD("Initial cost: %.3g", cost_ini);
     ilqr_state->cost_ = cost_ini;
 
     return ilqr_state->cost_;
@@ -93,7 +97,9 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
             const bool backward_ok = BackwardProcess(ilqr_state);
             backward_time_microseconds += stop_watch.elapsed_microseconds();
             if (!backward_ok) {
-                if (verbose_) cout << "EXIT inner loop: regularization failed\n";
+                if (verbose_) {
+                    cout << "EXIT inner loop: regularization failed\n";
+                }
                 inner_failed = true;
                 break;
             }
@@ -106,7 +112,9 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
             // A negative prediction means the local model is not trustworthy here (e.g. an
             // indefinite cost Hessian), not that we have converged; let the line search decide.
             const double expected_full = -(ilqr_state->dV_(0) + ilqr_state->dV_(1));
-            if (expected_full >= 0.0 and expected_full < kTolExpRel_ * cost_scale) break;
+            if (expected_full >= 0.0 and expected_full < kTolExpRel_ * cost_scale) {
+                break;
+            }
 
             //--------------------------------------------------------------------------
             // STEP 3: Forward pass / line-search to find new control sequence,
@@ -127,11 +135,15 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
             if (is_fwd_pass_done) {
                 need_to_recompute = true;
                 // Inner convergence, part 2: the accepted step barely reduced the cost.
-                if (dcost < kTolFunRel_ * cost_scale) break;
+                if (dcost < kTolFunRel_ * cost_scale) {
+                    break;
+                }
             } else {
                 IncreaseRho(ilqr_state->drho_, ilqr_state->rho_);
                 if (ilqr_state->rho_ >= krhoMax_) {
-                    if (verbose_) cout << "EXIT inner loop: rho > rhoMax\n";
+                    if (verbose_) {
+                        cout << "EXIT inner loop: rho > rhoMax\n";
+                    }
                     inner_failed = true;
                     break;
                 }
@@ -142,9 +154,10 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
         // the dual update below uses, instead of the last rejected line-search trial).
         cost_union->EvaluateConstraints(ilqr_state->x_seq(), ilqr_state->u_seq());
         const double max_violation = cost_union->GetMaxViolation();
-        if (verbose_)
+        if (verbose_) {
             cout << "AL outer iter " << outer << ": max_violation = " << max_violation
                  << ", max_penalty = " << max_penalty_ << "\n";
+        }
 
         if (max_violation < kViolationTol_) {
             ilqr_state->status_ = SolverStatus::OCPSolved;
@@ -159,7 +172,9 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
         // failure by itself: the multipliers keep improving. Stop only when some penalty is
         // already at the cap and the violation has stopped decreasing.
         if (AnyPenaltyAtMax() and max_violation > kStallRatio_ * prev_max_violation) {
-            if (verbose_) cout << "EXIT: penalty at its cap and no further progress\n";
+            if (verbose_) {
+                cout << "EXIT: penalty at its cap and no further progress\n";
+            }
             ilqr_state->status_ = SolverStatus::MaxPenalty;
             break;
         }
@@ -172,29 +187,37 @@ void ALILQRSolver<T, M, N>::GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_st
         ilqr_state->cost_ = EvaluateTotalCost(ilqr_state->x_seq(), ilqr_state->u_seq());
 
         if (outer == kMaxOuterIter_ - 1) {
-            if (verbose_) cout << "EXIT: Maximum outer iterations reached\n";
+            if (verbose_) {
+                cout << "EXIT: Maximum outer iterations reached\n";
+            }
             ilqr_state->status_ = SolverStatus::MaxIterReached;
         }
     } // end AL outer loop
 
     status_ = ilqr_state->status_;
     // Report violations against the boundaries at the final positions.
-    if (update_config_) cost_union->UpdateConfig(ilqr_state->x_seq());
+    if (update_config_) {
+        cost_union->UpdateConfig(ilqr_state->x_seq());
+    }
     cost_union->EvaluateConstraints(ilqr_state->x_seq(), ilqr_state->u_seq());
     double max_violation = cost_union->GetMaxViolation();
     // Stop the clock before printing, so console output is not counted as solve time.
     uint32_t total_time_microseconds = stop_watch_total.elapsed_microseconds();
     total_iters_ = total_iters;
     solve_time_ms_ = total_time_microseconds / 1.0e3;
-    if (!print_summary_) return;
+    if (!print_summary_) {
+        return;
+    }
     cout << "Solver Status : ";
     ShowSolverState();
     cout << "total iLQR iterations : " << total_iters << "\n";
     cout << "max_violation : " << max_violation << "\n";
-    for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints())
+    for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints()) {
         cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
-    for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints())
+    }
+    for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints()) {
         cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
+    }
     cout << "AL-iLQR total time : " << total_time_microseconds / 1.0e3 << "ms\n"
          << "calc Gradient and Hessian : " << derivative_time_microseconds / 1.0e3 << "ms\n"
          << "backward process : " << backward_time_microseconds / 1.0e3 << "ms\n"
@@ -211,8 +234,9 @@ template<typename T, unsigned int M, unsigned int N>
 double ALILQRSolver<T, M, N>::EvaluateTotalCost(const States &x, const Controls &u) const {
     double total_cost = 0.0;
     const uint32_t step_nums = step_sizes_.size();
-    for (uint32_t t = 0; t < step_nums; ++t)
+    for (int t = 0; t < static_cast<int>(step_nums); ++t) {
         total_cost += Problem().Evaluate(t, x[t], u[t]);
+    }
     total_cost += Problem().Evaluate(step_nums, x[step_nums], Control::Zero());
     return total_cost;
 }
@@ -232,10 +256,16 @@ void ALILQRSolver<T, M, N>::UpdateDualsAndPenalties() const {
 
 template<typename T, unsigned M, unsigned N>
 bool ALILQRSolver<T, M, N>::AnyPenaltyAtMax() const {
-    for (const auto &cons_ptr : Problem().GetCostUnionPtr()->GetImmutableEqConstraints())
-        if (cons_ptr->AnyPenaltyAtMax()) return true;
-    for (const auto &cons_ptr : Problem().GetCostUnionPtr()->GetImmutableIneqConstraints())
-        if (cons_ptr->AnyPenaltyAtMax()) return true;
+    for (const auto &cons_ptr : Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
+        if (cons_ptr->AnyPenaltyAtMax()) {
+            return true;
+        }
+    }
+    for (const auto &cons_ptr : Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
+        if (cons_ptr->AnyPenaltyAtMax()) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -247,7 +277,6 @@ void ALILQRSolver<T, M, N>::UpdateConvergenceState() {
     for (const auto &cons_ptr : Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
         max_penalty_ = std::max(max_penalty_, cons_ptr->GetMaxPenalty());
     }
-    //    cout << "max penalty : " << max_penalty_ << "\n";
 }
 
 template<typename T, unsigned int M, unsigned int N>
@@ -259,36 +288,38 @@ bool ALILQRSolver<T, M, N>::ForwardProcess(const States &x_old,
                                            double *ratio,
                                            ILQRSolverState<T, M, N> *ilqr_state) const {
     bool is_fwd_pass_done = false;
-    //    StopWatch timer;
-    //    timer.start();
     double alpha = 1.0;
     double gamma = 0.5;
     for (int i = 0; i < 20; ++i) {
         Controls u_plu_seq_feedforward = ilqr_state->u_seq_;
-        for (size_t j = 0; j < ilqr_state->u_seq_.size(); j++) {
+        for (int j = 0; j < static_cast<int>(ilqr_state->u_seq_.size()); j++) {
             u_plu_seq_feedforward[j] += ilqr_state->k_[j] * alpha;
         }
 
-        //        StopWatch ftimer;
-        //        ftimer.start();
         *new_cost = RollOut(ilqr_state->x0_, u_plu_seq_feedforward, ilqr_state);
-        //        double f_t = ftimer.elapsed_microseconds();
-        //        cout << "roll out : " << f_t << "ms\n";
+        // A trial whose state, control or cost is not finite is rejected explicitly (it used to
+        // be rejected only because comparisons with NaN are false).
+        if (!std::isfinite(*new_cost)) {
+            if (verbose_) {
+                cout << "Line search: alpha = " << alpha << " gives a non-finite trajectory, rejected\n";
+            }
+            ilqr_state->x_seq_ = x_old;
+            ilqr_state->u_seq_ = u_old;
+            alpha *= gamma;
+            continue;
+        }
 
         *dcost = ilqr_state->cost_ - *new_cost;
         *expected = -alpha * (ilqr_state->dV_(0) + alpha * ilqr_state->dV_(1));
 
-        //        cout << "dcost = " << *dcost << "\n";
-        //        cout << "expected = " << *expected << "\n";
-
         if (*expected > 0) {
             *ratio = *dcost / *expected;
-            //            cout << "ratio = " << *ratio << endl;
         } else {
             *ratio = sgn(*dcost);
-            //      NLOGW("Warning: non-positive expected reduction");
             ilqr_state->status_ = SolverStatus::CostIncrease;
-            if (verbose_) cout << "Warning: non-positive expected reduction\n";
+            if (verbose_) {
+                cout << "Warning: non-positive expected reduction\n";
+            }
         }
 
         // Armijo-like acceptance as in [Tassa 2012]: only a lower bound on the ratio.
@@ -299,8 +330,6 @@ bool ALILQRSolver<T, M, N>::ForwardProcess(const States &x_old,
             ilqr_state->cost_ = *new_cost; // accept step
             break;
         }
-        //        double duration = timer.elapsed_microseconds();
-        //        cout << "line search cost : " << duration << "ms\n";
         // Line search failed for this alpha, so reset x_seq
         // and u_seq since they are updated in roll_out()
         ilqr_state->x_seq_ = x_old;
@@ -329,25 +358,29 @@ double ALILQRSolver<T, M, N>::RollOut(const State &x0, const Controls &u, ILQRSo
     const uint32_t step_nums = step_sizes_.size();
     States x_new(step_nums + 1);
     x_new[0] = x0;
-    //    double timer = 0.0;
-    //    Problem().GetModel()->SetTimer(timer);
-    for (uint32_t t = 0; t < step_nums; t++) {
+    for (int t = 0; t < static_cast<int>(step_nums); t++) {
         u_curr = u[t];
-        if (ilqr_state->K_.size() > 0)
+        if (ilqr_state->K_.size() > 0) {
             // apply LQR control gains after first iteration
             u_curr += ilqr_state->K_[t] * (x_new[t] - ilqr_state->x_seq_[t]);
+        }
+        // The model is only defined for finite inputs: stop here and report the rollout as
+        // invalid (infinite cost) instead of passing NaN / inf on.
+        if (!x_curr.allFinite() or !u_curr.allFinite()) {
+            return std::numeric_limits<double>::infinity();
+        }
 
         ilqr_state->u_seq_[t] = u_curr; // no clamping since no control limit
         total_cost += Problem().Evaluate(t, x_curr, u_curr);
         x_curr = Problem().GetModel()->ForwardCalculation(x_curr, u_curr, step_sizes_[t]);
-        //        if (use_timer_)
-        //            Problem().GetModel()->UpdateTimer(step_sizes_[t]);
         x_new[t + 1] = x_curr;
     }
 
+    if (!x_new[step_nums].allFinite()) {
+        return std::numeric_limits<double>::infinity();
+    }
     ilqr_state->x_seq_ = x_new;
     total_cost += Problem().Evaluate(step_nums, x_new[step_nums], Control::Zero());
-    //    total_cost += problem().final_state_value(ilqr_state->x_seq_[step_nums]);
     return total_cost;
 }
 
@@ -366,27 +399,17 @@ template<typename T, unsigned int M, unsigned int N>
 bool ALILQRSolver<T, M, N>::BackwardProcess(ILQRSolverState<T, M, N> *ilqr_state) const {
     const uint32_t step_nums = step_sizes().size();
     if (step_nums == 0) {
-        //    NLOGW("iLQR backward_pass: planning horizon length is zero");
         cout << "iLQR backward_pass: planning horizon length is zero\n";
         return false;
     }
     // Counted across retries (it used to be reset inside the loop, which could spin forever).
     int reg_count = 0;
 
-    // cost-to-go at the end
-    //    ilqr_state->Vx_[step_nums] = ilqr_state->lx_[step_nums];
-    //    ilqr_state->Vxx_[step_nums] = ilqr_state->lxx_[step_nums];
-
-    //    StopWatch update_derivative;
-    //    uint64_t total_update_derivative = 0.0;
-    //    uint64_t total_calc_V = 0.0;
-
     while (true) {
         bool is_cost_psd = true;
         ilqr_state->dV_.setZero();
         for (int i = static_cast<int>(step_nums - 1); i >= 0; i--) {
             // backward from the end
-            //            update_derivative.start();
             ilqr_state->Qx_ =
                     ilqr_state->lx_[i] + (ilqr_state->fx_[i].transpose() * ilqr_state->Vx_[i + 1]) + ilqr_state->cx_[i];
             ilqr_state->Qu_ =
@@ -405,13 +428,7 @@ bool ALILQRSolver<T, M, N>::BackwardProcess(ILQRSolverState<T, M, N> *ilqr_state
             // regularization is different from the paper but consistent
             // with Tassa's Matlab implementation)
             // improved regularization QuuF = Quu + mu * I
-            //            ilqr_state->QuuF_ = ilqr_state->luu_[i] +
-            //                                ilqr_state->fu_[i].transpose() *
-            //                                (ilqr_state->Vxx_[i + 1] + (ilqr_state->rho_ * MatrixLXX::Identity()))
-            //                                * ilqr_state->fu_[i];
             ilqr_state->QuuF_ = ilqr_state->Quu_ + ilqr_state->rho_ * MatrixLUU::Identity();
-            //            total_update_derivative += update_derivative.elapsed_microseconds();
-            //            cout << "update derivatives in backward process : " << update_derivative.elapsed_microseconds() << "\n";
 
             // The following method is only efficient when n <= 4
             MatrixLUU QuuF_inv;
@@ -420,17 +437,12 @@ bool ALILQRSolver<T, M, N>::BackwardProcess(ILQRSolverState<T, M, N> *ilqr_state
             double tol = 1.0e-6;
             auto start = std::chrono::steady_clock::now();
             ilqr_state->QuuF_.computeInverseAndDetWithCheck(QuuF_inv, QuuF_det, QuuF_invertible, tol);
-            //            auto end = std::chrono::steady_clock::now();
-            //            double d = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1.0e3;
-            //            cout << "Compute inverse : " << d << " ms" << "\n";
             if (!QuuF_invertible) {
-                //        NLOGW("backward pass diverged at step %d", i);
                 is_cost_psd = false;
                 break; // QuuF is not positive definite, need to increase lambda
             }
 
             // Compute the control gain
-            //            update_derivative.start();
             ilqr_state->k_i_ = -QuuF_inv * ilqr_state->Qu_;
             ilqr_state->K_i_ = -QuuF_inv * ilqr_state->Qux_;
 
@@ -448,7 +460,6 @@ bool ALILQRSolver<T, M, N>::BackwardProcess(ILQRSolverState<T, M, N> *ilqr_state
             // save controls/gains
             ilqr_state->k_[i] = ilqr_state->k_i_;
             ilqr_state->K_[i] = ilqr_state->K_i_;
-            //            total_calc_V += update_derivative.elapsed_microseconds();
         }
 
         if (is_cost_psd) {
@@ -461,10 +472,7 @@ bool ALILQRSolver<T, M, N>::BackwardProcess(ILQRSolverState<T, M, N> *ilqr_state
             ilqr_state->status_ = SolverStatus::RegularizationFailed;
             return false;
         }
-        //        DecreaseRho(ilqr_state->drho_, ilqr_state->rho_);
     }
-    //    cout << "update derivatives in backward process : " << total_update_derivative << "\n";
-    //    cout << "calc V function : " << total_calc_V << "\n";
 }
 
 template<typename T, unsigned int M, unsigned int N>
@@ -485,7 +493,7 @@ template<typename T, unsigned int M, unsigned int N>
 double ALILQRSolver<T, M, N>::GetGradientNorm(const VecUs &l, const Controls &u) const {
     // Fixed-size expression and a running sum: called once per iLQR iteration, no heap use.
     double sum = 0.0;
-    for (uint32_t i = 0; i < l.size(); i++) {
+    for (int i = 0; i < static_cast<int>(l.size()); i++) {
         sum += (l[i].cwiseAbs().array() / (u[i].cwiseAbs().array() + 1)).maxCoeff();
     }
     return sum / l.size();
@@ -502,7 +510,7 @@ void ALILQRSolver<T, M, N>::InitializeILQRSolverState(ILQRSolverState<T, M, N> *
     States x = ilqr_state->x_seq();
     Controls u = ilqr_state->u_seq();
     CalcKinematicsDerivatives(x, u, &(ilqr_state->fx_), &(ilqr_state->fu_));
-    for (uint32_t t = 0; t < step_nums; ++t) {
+    for (int t = 0; t < static_cast<int>(step_nums); ++t) {
         (void)Problem().GetCostUnionPtr()->Evaluate(t, x[t], u[t]);
         Problem().GetCostUnionPtr()->CalcCostGradient(t, x[t], u[t], ilqr_state->lx_[t], ilqr_state->lu_[t]);
         Problem().GetCostUnionPtr()->CalcAugLagConstraintGradient(
@@ -523,7 +531,7 @@ void ALILQRSolver<T, M, N>::CalcKinematicsDerivatives(const States &x,
                                                       MatrixLXXs *f_x,
                                                       MatrixLXUs *f_u) const {
     const uint32_t step_nums = step_sizes().size();
-    for (uint32_t t = 0; t < step_nums; t++) {
+    for (int t = 0; t < static_cast<int>(step_nums); t++) {
         (*f_x)[t] = Problem().GetModel()->JacobianX(x[t], u[t], step_sizes_[t]);
         (*f_u)[t] = Problem().GetModel()->JacobianU(x[t], u[t], step_sizes_[t]);
     }

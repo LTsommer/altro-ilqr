@@ -7,8 +7,12 @@ ColumnLimit: 120
 DerivePointerAlignment: false
 PointerAlignment: Right
 AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+# One enumerator per line.
+AllowShortEnumsOnASingleLine: false
+# Every if / else / for / while body gets braces, even a single statement.
+InsertBraces: true
 SpaceAfterTemplateKeyword: false
 SpacesBeforeTrailingComments: 1
 BinPackParameters: false

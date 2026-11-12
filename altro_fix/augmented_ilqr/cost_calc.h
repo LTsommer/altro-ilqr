@@ -102,8 +102,9 @@ public:
     void UpdateConfig(const States &x_res_seq) {
         const size_t num_bounds = config_.bound_s.size();
         if (!fcs_ or num_bounds < 2 or config_.bound_segments.size() != num_bounds or
-            config_.bound_left_safe_dist.size() != num_bounds or config_.bound_right_safe_dist.size() != num_bounds)
+            config_.bound_left_safe_dist.size() != num_bounds or config_.bound_right_safe_dist.size() != num_bounds) {
             return;
+        }
         const int size = x_res_seq.size();
         // resize, not assign(size, {}): keeps the buffers of the per-step boundary segments, so the
         // element-wise copies below do not allocate again on every update.

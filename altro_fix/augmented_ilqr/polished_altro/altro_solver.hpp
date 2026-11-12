@@ -11,12 +11,17 @@
 #include "../clock.hpp"
 #include <iostream>
 #include <algorithm>
+#include <cassert>
 #include <vector>
 
 using std::cout;
 using std::endl;
 
-enum class JacSize { None, Gradient, Jacobian };
+enum class JacSize {
+    None,
+    Gradient,
+    Jacobian,
+};
 
 template<typename... Args>
 void print(const Args &...args) {
@@ -28,8 +33,9 @@ void print(const Args &...args) {
 
 template<typename T>
 std::ostream &operator<<(std::ostream &os, const std::vector<T> &vec) {
-    for (const auto &element : vec)
+    for (const auto &element : vec) {
         os << element << ' ';
+    }
     os << "\n";
     return os;
 }
@@ -52,7 +58,6 @@ public:
     OCP_VARIABLES(T, M, N)
     explicit ALTROSolver(std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface, const vector<double> &steps)
         : step_sizes_(steps) {
-        //        problem_.reset(std::move(solver->ProblemPtr()));
         steps_num_ = steps.size();
         solver_.reset(new ALILQRSolver<T, M, N>(std::move(ocp_interface), steps));
     };
@@ -94,10 +99,12 @@ public:
             cout << "ALTRO projection skipped: AL-iLQR violation above " << projection_trigger_ << "\n";
         }
         cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints())
+        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
             cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableIneqConstraints())
+        }
+        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
             cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
+        }
         cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
         cout << "altro solver consumes : " << total_ms << " ms\n";
     }
@@ -214,8 +221,12 @@ private:
                     h[t].xu += cur_lxu;
                 }
             }
-            if (t >= 1) diag_sum += h[t].xx.diagonal().cwiseAbs().sum(); // x_0 is fixed
-            if (t < steps_num_) diag_sum += h[t].uu.diagonal().cwiseAbs().sum();
+            if (t >= 1) {
+                diag_sum += h[t].xx.diagonal().cwiseAbs().sum(); // x_0 is fixed
+            }
+            if (t < steps_num_) {
+                diag_sum += h[t].uu.diagonal().cwiseAbs().sum();
+            }
         }
         const double scale = std::max(diag_sum / (steps_num_ * static_cast<double>(M + N)), 1e-12);
         for (auto &b : h) {
@@ -246,10 +257,16 @@ private:
         double v = 0.0;
         for (int t = 0; t <= steps_num_; ++t) {
             const Control u_t = t < steps_num_ ? u[t] : Control::Zero();
-            for (auto &c : cost_union->GetEqConstraints())
-                if (c->Evaluate(t, x[t], u_t)) v = std::max(v, std::fabs(c->ConsVal()));
-            for (auto &c : cost_union->GetIneqConstraints())
-                if (c->Evaluate(t, x[t], u_t)) v = std::max(v, c->ConsVal());
+            for (auto &c : cost_union->GetEqConstraints()) {
+                if (c->Evaluate(t, x[t], u_t)) {
+                    v = std::max(v, std::fabs(c->ConsVal()));
+                }
+            }
+            for (auto &c : cost_union->GetIneqConstraints()) {
+                if (c->Evaluate(t, x[t], u_t)) {
+                    v = std::max(v, c->ConsVal());
+                }
+            }
         }
         return v;
     }
@@ -257,10 +274,11 @@ private:
     double MaxDynamicsResidual(const States &x, const Controls &u) const {
         const auto &model = solver_->Problem().GetModel();
         double v = 0.0;
-        for (int t = 0; t < steps_num_; ++t)
+        for (int t = 0; t < steps_num_; ++t) {
             v = std::max(v,
                          (x[t + 1] - model->ForwardCalculation(x[t], u[t], step_sizes_[t]))
                                  .template lpNorm<Eigen::Infinity>());
+        }
         return v;
     }
 
@@ -284,17 +302,23 @@ private:
         for (int t = 0; t <= steps_num_; ++t) {
             const Control u_t = t < steps_num_ ? u[t] : Control::Zero();
             for (auto &c : cost_union->GetEqConstraints()) {
-                if (!c->Evaluate(t, x[t], u_t)) continue;
+                if (!c->Evaluate(t, x[t], u_t)) {
+                    continue;
+                }
                 c->Gradient(t, x[t], u_t);
                 rows.push_back(make_row(t, c->ConsVal(), c->GradientX(), c->GradientU(), c->ConsVal()));
             }
             for (auto &c : cost_union->GetIneqConstraints()) {
-                if (!c->Evaluate(t, x[t], u_t)) continue;
+                if (!c->Evaluate(t, x[t], u_t)) {
+                    continue;
+                }
                 raw.clear();
                 if (c->RawConstraints(t, x[t], u_t, raw)) {
                     for (const auto &r : raw) {
                         ActiveRow row = make_row(t, r.g, r.gx, r.gu, std::max(r.g, 0.0));
-                        if (r.g > kTol or row.distance > -active_dist_) rows.push_back(std::move(row));
+                        if (r.g > kTol or row.distance > -active_dist_) {
+                            rows.push_back(std::move(row));
+                        }
                     }
                 } else if (c->ConsVal() > kTol) {
                     c->Gradient(t, x[t], u_t);
@@ -331,8 +355,9 @@ private:
         return q;
     }
 
-    // Applies the step by a nonlinear rollout from x_0, optionally with feedback gains.
-    void Rollout(const States &x,
+    // Applies the step by a nonlinear rollout from x_0, optionally with feedback gains. Returns
+    // false, without calling the model further, as soon as a state or control is not finite.
+    bool Rollout(const States &x,
                  const Controls &u,
                  const std::vector<VecU> &k,
                  const std::vector<Eigen::Matrix<T, N, M>> &K,
@@ -349,8 +374,12 @@ private:
             } else {
                 u_new[t] = u[t] + alpha * k[t] + K[t] * (x_new[t] - x[t]);
             }
+            if (!x_new[t].allFinite() or !u_new[t].allFinite()) {
+                return false;
+            }
             x_new[t + 1] = model->ForwardCalculation(x_new[t], u_new[t], step_sizes_[t]);
         }
+        return x_new[steps_num_].allFinite();
     }
 
     // Returns the number of accepted steps.
@@ -361,7 +390,10 @@ private:
             const std::vector<VecU> k0(steps_num_, VecU::Zero());
             States x_r;
             Controls u_r;
-            Rollout(x, u, k0, {}, 0.0, x_r, u_r);
+            // AL-iLQR only returns finite trajectories, so this cannot fail.
+            const bool rollout_ok = Rollout(x, u, k0, {}, 0.0, x_r, u_r);
+            assert(rollout_ok && "ALTRO: the AL-iLQR trajectory must be finite");
+            (void)rollout_ok;
             x = std::move(x_r);
         }
         const std::vector<StageHessian> h = BuildCostHessian(x, u);
@@ -405,8 +437,10 @@ private:
                     for (int ls = 0; ls < kMaxProjectionLineSearch; ++ls) {
                         States x_n;
                         Controls u_n;
-                        Rollout(x, u, step.control_delta, step.feedback, alpha, x_n, u_n);
-                        if (MaxConstraintViolation(x_n, u_n) < v) {
+                        // A non-finite trial is rejected like one that does not reduce the
+                        // violation.
+                        if (Rollout(x, u, step.control_delta, step.feedback, alpha, x_n, u_n) and
+                            MaxConstraintViolation(x_n, u_n) < v) {
                             x = std::move(x_n);
                             u = std::move(u_n);
                             accepted = true;

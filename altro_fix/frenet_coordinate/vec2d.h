@@ -20,8 +20,6 @@ public:
     //! Constructor returning the zero vector.
     constexpr Vec2d() noexcept : Vec2d(0, 0) {}
 
-    //  constexpr Vec2d(const Vec2d &&that) noexcept : x_(that.x()), y_(that.y()) {}
-
     //! Creates a unit-vector with a given angle to the positive x semi-axis
     static Vec2d CreateUnitVec2d(const double angle);
 

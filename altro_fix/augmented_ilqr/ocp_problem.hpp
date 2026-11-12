@@ -17,7 +17,9 @@ public:
     virtual ~OCPInterface() = default;
 
     double Evaluate(const int step, const State &x, const Control &u) const {
-        if (cost_union_ == nullptr) return 0.0;
+        if (cost_union_ == nullptr) {
+            return 0.0;
+        }
         return cost_union_->Evaluate(step, x, u);
     };
 
@@ -47,12 +49,6 @@ public:
         cost_union_->AddCostTerm(std::make_unique<CT>(config_));
     }
 
-    //    template<typename ConsType,
-    //            typename std::enable_if<std::is_same<ConsType, Equality>::value, int> = 0>
-    //    void AddConstraint(ConstraintValuePtr<T, M, N, ConsType> &&constraint_value) {
-    //        cost_union_->template AddConstraint(std::move(constraint_value));
-    //    }
-
     void AddEqConstraint(ConstraintValuePtr<T, M, N, Equality> &&constraint_value) {
         cost_union_->AddEqConstraint(std::move(constraint_value));
     }
@@ -60,12 +56,6 @@ public:
     void AddIneqConstraint(ConstraintValuePtr<T, M, N, Inequality> &&constraint_value) {
         cost_union_->AddIneqConstraint(std::move(constraint_value));
     }
-
-    //    template<typename ConsType,
-    //            typename std::enable_if<std::is_same<ConsType, Inequality>::value, int> = 0>
-    //    void AddConstraint(ConstraintValuePtr<T, M, N, ConsType> &&constraint_value) {
-    //        cost_union_->AddConstraint(constraint_value);
-    //    }
 
 protected:
     std::unique_ptr<ModelBase<T, M, N>> model_;

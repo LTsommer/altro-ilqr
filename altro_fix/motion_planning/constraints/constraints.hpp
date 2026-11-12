@@ -6,11 +6,13 @@
 #define ALILQR_CONSTRAINTS_HPP
 
 #include "../../ilqr_system_declaration.hpp"
+#include "../../common/math_utils.h"
 #include "../../cost_function/cost_function.hpp"
 #include "../../constraint_definition/constraint_formulation.h"
 #include "../../constraint_definition/constraint.hpp"
 #include "../../basic_constraint/basic_constraint.hpp"
 #include "../mix_model.h"
+#include "../lateral_kinematics.h"
 #include "../../frenet_coordinate/frenet_coordinate_system.h"
 
 /* linear acceleration limitation
@@ -298,7 +300,7 @@ public:
         if (step > horizon_) {
             return false;
         }
-        cost_val = a_ * (sqr(x(mVel)) * x(mKappa)) + b_;
+        cost_val = a_ * LateralAcc(x) + b_;
         return true;
     }
 
@@ -370,7 +372,7 @@ public:
             return false;
         }
 
-        cost_val = a_ * (2 * x(mVel) * x(mAcc) * x(mKappa) + sqr(x(mVel)) * u(mDotKappa)) + b_;
+        cost_val = a_ * LateralJerk(x, u) + b_;
         return true;
     }
 
@@ -487,7 +489,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
         return true;
     }
 
@@ -525,7 +529,9 @@ public:
     }
 
     bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -653,7 +659,9 @@ public:
     }
 
     bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -781,7 +789,9 @@ public:
     }
 
     bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
-        if (step >= horizon_) return false;
+        if (step >= horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -968,7 +978,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -1097,7 +1109,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -1225,7 +1239,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step >= horizon_) return false;
+        if (step >= horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -1326,7 +1342,9 @@ public:
             const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -1358,7 +1376,9 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > horizon_) return false;
+        if (step > horizon_) {
+            return false;
+        }
 
         double g_lb{0.0};
         double g_ub{0.0};
@@ -1588,9 +1608,11 @@ public:
     bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
         val = 0.0;
         Projection p;
-        if (step > horizon_ or s_pts_.empty() or !Project(step, x, p)) return false;
+        if (step > horizon_ or s_pts_.empty() or !Project(step, x, p)) {
+            return false;
+        }
         double slope = 0.0;
-        val = x(mVel) - Limit(p.s, slope);
+        val = x(mVel) - InterpolatePiecewiseLinear(s_pts_, v_lim_pts_, p.s, &slope);
         return true;
     }
 
@@ -1600,9 +1622,11 @@ public:
         lx.setZero();
         lu.setZero();
         Projection p;
-        if (step > horizon_ or s_pts_.empty() or !Project(step, x, p)) return false;
+        if (step > horizon_ or s_pts_.empty() or !Project(step, x, p)) {
+            return false;
+        }
         double slope = 0.0;
-        (void)Limit(p.s, slope);
+        (void)InterpolatePiecewiseLinear(s_pts_, v_lim_pts_, p.s, &slope);
         lx(mXPos) = -slope * p.ds_dx;
         lx(mYPos) = -slope * p.ds_dy;
         lx(mVel) = 1.0;
@@ -1654,7 +1678,9 @@ private:
         }
         if (!ok) {
             Vec2d sl;
-            if (fcs_->CartCoord2FrenetCoord(Vec2d(px, py), sl) != TRANSFORM_SUCCESS) return false;
+            if (fcs_->CartCoord2FrenetCoord(Vec2d(px, py), sl) != TRANSFORM_SUCCESS) {
+                return false;
+            }
             s = sl.x();
         }
         last_s_[step] = s;
@@ -1672,17 +1698,6 @@ private:
     }
 
     // v_lim(s) and its slope dv_lim/ds.
-    double Limit(const double s, double &slope) const {
-        slope = 0.0;
-        if (s <= s_pts_.front()) return v_lim_pts_.front();
-        if (s >= s_pts_.back()) return v_lim_pts_.back();
-        const size_t i = std::upper_bound(s_pts_.begin(), s_pts_.end(), s) - s_pts_.begin();
-        const double ds = s_pts_[i] - s_pts_[i - 1];
-        if (ds <= 1e-9) return std::min(v_lim_pts_[i - 1], v_lim_pts_[i]);
-        slope = (v_lim_pts_[i] - v_lim_pts_[i - 1]) / ds;
-        return v_lim_pts_[i - 1] + slope * (s - s_pts_[i - 1]);
-    }
-
     const FrenetCoordinateSystem *fcs_;
     vector<double> s_pts_;
     vector<double> v_lim_pts_;

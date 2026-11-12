@@ -4,6 +4,7 @@
 #include <iostream>
 #include "mix_model.h"
 #include "../ilqr_system_declaration.hpp"
+#include "../common/math_utils.h"
 #include "../cost_function/cost_function.hpp"
 #include "cost_functions/cost_terms.hpp"
 #include "../cost_function/cost_terms.h"
@@ -80,8 +81,6 @@ int main(int argc, char **argv) {
         std::cerr << "Unknown projection method: " << argv[2] << " (use riccati, kkt-eigen, or kkt-qdldl)\n";
         return 1;
     }
-    //    test_kinematics();
-    //    OCP_PROBLEM_MATRIX(double, M, N);
     bool visualize = false;
     vector<double> centerline_x{
             458826.4544207164,  458828.53126436437, 458830.61546950776, 458832.7064482603,  458834.79742701043,
@@ -117,20 +116,11 @@ int main(int argc, char **argv) {
             4404625.829429328};
     vector_norm(centerline_x);
     vector_norm(centerline_y);
-    //    vector<double> centerline_x{-29, -28.073, -27.1461, -26.2195, -25.2932, -24.3675, -23.4423, -22.5179, -21.5944, -20.6719, -19.7506, -18.8305, -17.9115, -16.9932, -16.0749, -15.156, -14.2358, -13.3138, -12.3894, -11.4619, -10.5307, -9.59494, -8.6546, -7.70999, -6.76301, -5.8163, -4.87223, -3.93307, -3.00116, -2.07885, -1.16851, -0.27247, 0.606931, 1.46722, 2.30408, 3.11193, 3.88402, 4.61319, 5.29673, 5.93554, 6.53708, 7.11347, 7.67582, 8.23435, 8.79929, 9.38099, 9.9907, 10.6403, 11.3369, 12.0837, 12.8782, 13.7133, 14.5829, 15.4816, 16.4041, 17.3444, 18.297, 19.2564, 20.2168, 21.1722, 22.1195, 23.059, 23.9914, 24.918, 25.84, 26.7585, 27.6745, 28.589, 29.5032, 30.4184, 31.3354, 32.2546, 33.1761, 34.0994, 35.0242, 35.95, 36.8767, 37.8039, 38.7312, 39.6583, 40.5848, 41.5108, 42.4362, 43.3612, 44.2858, 45.2101, 46.1342, 47.0581, 47.9819, 48.9057, 49.8297, 50.7537, 51.6779, 52.6022, 53.5267, 54.4512, 55.3759, 56.3006, 57.2254, 58.1503, 59.0751, 60};
-    //    vector<double> centerline_y{5, 4.98539, 4.97153, 4.95919, 4.94911, 4.94205, 4.93878, 4.94008, 4.94661, 4.9591, 4.97858, 5.00585, 5.0399, 5.07889, 5.12007, 5.16039, 5.19696, 5.22699, 5.24779, 5.25664, 5.25017, 5.22511, 5.18078, 5.11855, 5.0466, 4.97622, 4.91764, 4.88062, 4.87524, 4.91171, 5.00002, 5.1501, 5.37243, 5.67685, 6.06321, 6.52507, 7.05561, 7.64774, 8.29326, 8.9831, 9.70631, 10.4506, 11.2041, 11.9548, 12.6912, 13.4019, 14.0742, 14.6951, 15.256, 15.7527, 16.186, 16.5618, 16.8847, 17.1588, 17.3879, 17.5765, 17.729, 17.8493, 17.9419, 18.011, 18.0602, 18.0921, 18.1092, 18.1137, 18.1081, 18.0948, 18.076, 18.0542, 18.0317, 18.0112, 17.9948, 17.9831, 17.9764, 17.9737, 17.974, 17.9768, 17.9814, 17.987, 17.9929, 17.9982, 18.0025, 18.0056, 18.0074, 18.0082, 18.0083, 18.0076, 18.0065, 18.005, 18.0034, 18.0017, 18.0003, 17.9991, 17.9982, 17.9977, 17.9974, 17.9973, 17.9975, 17.9978, 17.9982, 17.9988, 17.9994, 18};
-    //    vector<double> ref_x{-19.7506, -18.8305, -17.9109, -16.9913, -16.0712, -15.1504, -14.229, -13.3071, -12.3846, -11.4614, -10.5363, -9.60804, -8.67375, -7.73174, -6.78169, -5.82796, -4.87636, -3.93259, -3.00292, -2.09295, -1.20701, -0.348906, 0.480788, 1.28814, 2.07545, 2.84559, 3.59578, 4.32201, 5.02497, 5.70644, 6.37277, 7.03031, 7.6826, 8.33153, 8.97809, 9.6238, 10.2733, 10.9333, 11.6132, 12.325, 13.0742, 13.8641, 14.6916, 15.554, 16.448, 17.3678, 18.3068, 19.2581, 20.2143, 21.1682, 22.1156, 23.056, 23.9899, 24.9182, 25.8417, 26.7613, 27.6781, 28.5931, 29.5072, 30.4217, 31.3378, 32.256, 33.1767, 34.0995, 35.024, 35.9497, 36.8764, 37.8036, 38.731, 39.6582, 40.5848, 41.5108, 42.4363, 43.3612, 44.2858, 45.2101, 46.1342, 47.0581, 47.9819, 48.9057, 49.8296, 50.7537, 51.6779, 52.6022, 53.5267, 54.4512, 55.3759, 56.3006, 57.2254, 58.1503};
-    //    vector<double> ref_y{4.97858, 5.00484, 5.0246, 5.03615, 5.03729, 5.02823, 5.01108, 4.98817, 4.96164, 4.93309, 4.90358, 4.87374, 4.84474, 4.81969, 4.80483, 4.80917, 4.83898, 4.89869, 4.99269, 5.1247, 5.29817, 5.5176, 5.78959, 6.11839, 6.50542, 6.94828, 7.4409, 7.97929, 8.56151, 9.18289, 9.83737, 10.5135, 11.199, 11.8818, 12.5506, 13.1939, 13.8004, 14.3629, 14.8784, 15.3528, 15.7894, 16.1923, 16.562, 16.8959, 17.1911, 17.446, 17.66, 17.8343, 17.9717, 18.0765, 18.1531, 18.2059, 18.2389, 18.2556, 18.2593, 18.2528, 18.2388, 18.2192, 18.1962, 18.172, 18.1484, 18.1263, 18.106, 18.0873, 18.0703, 18.0551, 18.0419, 18.031, 18.022, 18.0147, 18.0087, 18.0039, 18.0002, 17.9974, 17.9956, 17.9944, 17.9938, 17.9934, 17.9933, 17.9934, 17.9936, 17.994, 17.9945, 17.995, 17.9956, 17.9962, 17.9968, 17.9975, 17.9982, 17.9989};
     vector<double> rx, ry;
     int start_node = 20;
     int end_node = 70;
     rx.assign(centerline_x.begin() + start_node, centerline_x.begin() + end_node);
     ry.assign(centerline_y.begin() + start_node, centerline_y.begin() + end_node);
-    //    vector<Vec2d> rxy;
-    //    rxy.resize(rx.size());
-    //    for (int i = 0; i < rx.size(); ++i) {
-    //        rxy[i] = std::move(Vec2d(rx[i], ry[i]));
-    //    }
     vector<double> kappa, yaw, velocity, acceleration, ds, s, dt, T;
     vector<Vector2d> p_ref;
 
@@ -196,11 +186,6 @@ int main(int argc, char **argv) {
     dt.reserve(rx.size());
     acceleration.reserve(rx.size());
     for (int i = 0; i < rx.size(); ++i) {
-        //        Vector2d ref;
-        //        double x = rx[i];
-        //        double y = ry[i];
-        //        ref << x, y;
-        //        p_ref.emplace_back(ref);
         Vec2d frenet_pt;
         (void)fcs->CartCoord2FrenetCoord(Vec2d(cur_x, cur_y), frenet_pt);
         double h = fcs->GetRefCurveHeading(frenet_pt.x());
@@ -280,9 +265,6 @@ int main(int argc, char **argv) {
         const double free_width = bound_points[0].y() - bound_points[2].y() - 2.0 * (half_veh_width + min_safe_buffer);
         speed_limit_s.emplace_back(frenet_pt.x());
         speed_limit_v.emplace_back(kNarrowSpeedBase + kNarrowSpeedGain * std::max(0.0, free_width));
-        //        cout << "heading = " << h << "\n";
-        //        cout << "kappa = " << k << "\n";
-        //        cout << "vel = " << v << "\n";
         yaw.emplace_back(h);
         kappa.emplace_back(k);
         velocity.emplace_back(v);
@@ -308,12 +290,9 @@ int main(int argc, char **argv) {
             v0 = v0 + acc * delta_t + 0.5 * jerk * sqr(delta_t);
             v0 = std::min(vel_max, std::max(std::min(v0, v), vel_min));
             s_new = s_old + v0 * delta_t + 0.5 * acc * sqr(delta_t) + (1.0 / 6.0) * jerk * cube(delta_t);
-            if (s_new > fcs->GetSlength()) break;
-            //            cout << "delta vel = " << velocity[i] - velocity[i - 1] << "\n";
-            //            double acc = (velocity[i] - velocity[i - 1]) / t;
-            //            cout << "step = " << step << "\n";
-            //            cout << "acc = " << acc << "\n";
-            //            ds.emplace_back(step);
+            if (s_new > fcs->GetSlength()) {
+                break;
+            }
             Point2D cur_point = fcs->GetRefCurvePoint(s_new);
             cur_x = cur_point.x;
             cur_y = cur_point.y;
@@ -327,11 +306,8 @@ int main(int argc, char **argv) {
             acceleration.emplace_back(acc);
 
             T.emplace_back(T.back() + delta_t);
-            //            if (i == rx.size() - 1)
-            //                acceleration.emplace_back(acceleration.back());
         }
         s_old = s_new;
-        //        cout << "\n";
     }
 
     lb_x.reserve(p_bounds.size());
@@ -351,15 +327,11 @@ int main(int argc, char **argv) {
     double w_jerk = 1000.0;
     double w_ref_offset = 3000.0;
     double w_ref_vel = 1000.0;
-    //    double w_kappa = 1000.0;
-    //    double w_dkappa = 2000.0;
     double w_u = 1.0;
     double w_clb = 1.0;
     double w_cub = 1.0;
     double w_plb = 2.0;
     double w_prb = 2.0;
-
-    //    double w_acc = 50.0;
 
     double u_min = -0.1;
     double u_max = 0.1;
@@ -372,7 +344,7 @@ int main(int argc, char **argv) {
 
     // Speed limit along s: never below what the vehicle can reach from its initial speed with a
     // comfortable deceleration, v^2 = v0^2 - 2 * a * (s - s0), so the constraint stays feasible.
-    for (size_t i = 0; i < speed_limit_s.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(speed_limit_s.size()); ++i) {
         const double v_reach_sq =
                 sqr(kStartSpeed) - 2.0 * kNarrowBrakeDecel * std::max(0.0, speed_limit_s[i] - speed_limit_s.front());
         speed_limit_v[i] = std::max(speed_limit_v[i], std::sqrt(std::max(0.0, v_reach_sq)));
@@ -389,22 +361,17 @@ int main(int argc, char **argv) {
             const double ds_i = std::max(0.0, speed_limit_s[i + 1] - speed_limit_s[i]);
             envelope[i] = std::min(envelope[i], std::sqrt(sqr(envelope[i + 1]) + 2.0 * kNarrowBrakeDecel * ds_i));
         }
-        auto envelope_at = [&](const double s_q) {
-            if (s_q <= speed_limit_s.front()) return envelope.front();
-            if (s_q >= speed_limit_s.back()) return envelope.back();
-            const size_t i = std::upper_bound(speed_limit_s.begin(), speed_limit_s.end(), s_q) - speed_limit_s.begin();
-            const double ds_i = speed_limit_s[i] - speed_limit_s[i - 1];
-            if (ds_i <= 1e-9) return std::min(envelope[i - 1], envelope[i]);
-            return envelope[i - 1] + (envelope[i] - envelope[i - 1]) * (s_q - speed_limit_s[i - 1]) / ds_i;
-        };
         double v_cur = kStartSpeed;
         double s_cur = speed_limit_s.front();
-        for (size_t t = 0; t < target_speed.size(); ++t) {
+        for (int t = 0; t < static_cast<int>(target_speed.size()); ++t) {
             target_speed[t] = v_cur;
-            if (t >= dt.size()) continue;
+            if (t >= static_cast<int>(dt.size())) {
+                continue;
+            }
+            const double v_envelope = InterpolatePiecewiseLinear(speed_limit_s, envelope, s_cur + v_cur * dt[t]);
             const double v_next = std::max(v_cur - kNarrowBrakeDecel * dt[t],
-                                           std::min({velocity[std::min(t + 1, velocity.size() - 1)],
-                                                     envelope_at(s_cur + v_cur * dt[t]),
+                                           std::min({velocity[std::min(t + 1, static_cast<int>(velocity.size()) - 1)],
+                                                     v_envelope,
                                                      v_cur + kSpeedProfileAccel * dt[t]}));
             s_cur += 0.5 * (v_cur + v_next) * dt[t];
             v_cur = v_next;
@@ -467,8 +434,6 @@ int main(int argc, char **argv) {
     config.half_veh_length = half_veh_width;
     config.max_safe_buffer = max_safe_buffer;
     config.min_safe_buffer = min_safe_buffer;
-
-    //    config.type_names = type_names;
 
     std::unique_ptr<OCPInterface<double, M, N>> ocp_interface(new OCPInterface<double, M, N>());
     ocp_interface->SetConfig(config);
@@ -559,7 +524,6 @@ int main(int argc, char **argv) {
          << "\n";
     cout << "all cost functions, constraints and forward model are loaded\n";
 
-    //    std::unique_ptr<ILQRSolver<double, 5, 1>> solver(new ILQRSolver(std::move(ocp_interface), ds));
     OCP_VARIABLES(double, M, N)
     State x0;
     x0(mXPos) = rx.front();
@@ -583,17 +547,16 @@ int main(int argc, char **argv) {
         auto clamp = [](double v, double lo, double hi) { return std::min(hi, std::max(lo, v)); };
         MixModel model;
         State x = x0;
-        for (size_t t = 0; t < dt.size(); ++t) {
+        for (int t = 0; t < static_cast<int>(dt.size()); ++t) {
             Vec2d sl;
             (void)fcs->CartCoord2FrenetCoord(Vec2d(x(mXPos), x(mYPos)), sl);
             const double s_next = std::min(sl.x() + std::max(x(mVel), 0.0) * dt[t], fcs->GetSlength());
             const double kappa_ref = fcs->GetRefCurveCurvature(s_next);
             const double heading_err = x(mTheta) - fcs->GetRefCurveHeading(sl.x());
-            const double kappa_cmd = clamp(
-                    kappa_ref - k_lat * sl.y() - k_heading * std::atan2(std::sin(heading_err), std::cos(heading_err)),
-                    config.kappa_min,
-                    config.kappa_max);
-            double v_ref = config.velocity[std::min(t + 1, config.velocity.size() - 1)];
+            const double kappa_cmd = clamp(kappa_ref - k_lat * sl.y() - k_heading * NormalizeAngle(heading_err),
+                                           config.kappa_min,
+                                           config.kappa_max);
+            double v_ref = config.velocity[std::min(t + 1, static_cast<int>(config.velocity.size()) - 1)];
             v_ref = std::min(v_ref, std::sqrt(config.lat_acc_max / std::max(std::fabs(kappa_ref), 1e-6)));
             const double acc_cmd = clamp(k_speed * (v_ref - x(mVel)), config.acc_min, config.acc_max);
             u0[t](mDotKappa) = (kappa_cmd - x(mKappa)) / dt[t];
@@ -601,12 +564,8 @@ int main(int argc, char **argv) {
             x = model.ForwardCalculation(x, u0[t], dt[t]);
         }
     }
-    //    for (int i = 0; i < u0.size(); ++i)
-    //        u0[i][Acc] = acceleration[i];
     States x_res_seq;
     Controls u_res_seq;
-    //    solver->Solve(x0, u0, x_res_seq, u_res_seq);
-    //
     // AL-iLQR followed by ALTRO solution polishing (runs only once AL-iLQR is close to feasible).
     std::unique_ptr<ALTROSolver<double, M, N>> altro_solver(
             new ALTROSolver<double, M, N>(std::move(ocp_interface), dt));
@@ -638,8 +597,6 @@ int main(int argc, char **argv) {
             ilqr_j.emplace_back(ilqr_j.back());
             ilqr_dk.emplace_back(ilqr_dk.back());
         }
-        //        ilqr_v.emplace_back(x_res_seq[i][V]);
-        //        cout << x_res_seq[i][X] << endl;
     }
 
     vector<double> smooth_v;

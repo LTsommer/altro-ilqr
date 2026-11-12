@@ -30,8 +30,9 @@ public:
     ~ConstraintValue() = default;
 
     void UpdateDual() {
-        for (int t = 0; t < horizon_; ++t)
+        for (int t = 0; t < horizon_; ++t) {
             ConsType::Name::UpdateDual(cons_val_mat_(t), penalty_(t), lambda_(t));
+        }
     }
 
     // Penalties grow by penalty_factor_ every outer iteration (as in ALTRO) but are capped at
@@ -43,8 +44,9 @@ public:
     // the multiplier update lambda = max(0, lambda + mu*c) can only grow, which breaks the
     // assumption that multipliers adjust in both directions.
     void UpdatePenalty() {
-        for (int t = 0; t < horizon_; ++t)
+        for (int t = 0; t < horizon_; ++t) {
             penalty_(t) = std::min(penalty_(t) * penalty_factor_, kMaxPenalty);
+        }
     }
 
     bool AnyPenaltyAtMax() const { return (penalty_.array() >= kMaxPenalty).any(); }
@@ -58,8 +60,6 @@ public:
     double GetLambda(const int step) const { return lambda_(step); }
 
     double GetPenalty(const int step) const { return penalty_(step); }
-
-    //    const Eigen::Matrix<T, dim, 1> &GetLambda() const {return lambda_;}
 
     double GetMaxPenalty() const { return penalty_.template lpNorm<Eigen::Infinity>(); }
 
@@ -79,9 +79,10 @@ public:
     }
 
     bool Evaluate(const int step, const State &x, const Control &u) {
-        //        cons_ptr_->GetConstraintType();
         bool success = cons_ptr_->Evaluate(step, x, u, cons_val_);
-        if (!success) cons_val_ = 0.0;
+        if (!success) {
+            cons_val_ = 0.0;
+        }
         cons_val_mat_(step) = cons_val_;
         if (success) {
             ctg_val_ = (lambda_(step) + 0.5 * cons_val_ * ActivePenalty(step)) * cons_val_;
@@ -92,12 +93,6 @@ public:
         return success;
     }
 
-    //    double MaxViolation() {
-    //        auto iter = std::max_element(violations_.begin(), violations_.end());
-    //        double max_val = violations_[std::distance(violations_.begin(), iter)];
-    //        violations_.clear();
-    //        return max_val;
-    //    }
     std::type_index GetTypeIndex() { return cons_ptr_->GetTypeIndex(); }
 
     std::string GetName() { return cons_ptr_->GetName(); }

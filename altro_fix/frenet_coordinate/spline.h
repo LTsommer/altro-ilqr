@@ -78,7 +78,10 @@ public:
     // first_deriv: clamped spline f'(x_0) = A, f'(x_n) = B
     // second_deriv: natural spline f''(x_0) = f''(x_n) = 0
     // details in https://zhuanlan.zhihu.com/p/62860859
-    enum bd_type { first_deriv = 1, second_deriv = 2 };
+    enum bd_type {
+        first_deriv = 1,
+        second_deriv = 2,
+    };
 
 private:
     std::vector<double> m_x, m_y; // x,y coordinates of points

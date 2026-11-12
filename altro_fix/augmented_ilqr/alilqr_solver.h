@@ -7,13 +7,25 @@
 
 #include "ocp_problem.hpp"
 #include "ilqr_process.hpp"
+#include <cmath>
+#include <stdexcept>
+#include <string>
 
 template<typename T, unsigned int M, unsigned int N>
 class ALILQRSolver {
 public:
     OCP_VARIABLES(T, M, N)
+    // Throws std::invalid_argument unless every step size is finite and positive: the dynamics
+    // (and their integrators) are only defined for such steps, and every solver path uses them.
     explicit ALILQRSolver(std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface, const vector<double> &steps)
-        : problem_(std::move(ocp_interface)), step_sizes_(steps) {};
+        : problem_(std::move(ocp_interface)), step_sizes_(steps) {
+        for (int t = 0; t < static_cast<int>(step_sizes_.size()); ++t) {
+            if (!(std::isfinite(step_sizes_[t]) && step_sizes_[t] > 0.0)) {
+                throw std::invalid_argument("ALILQRSolver: step size " + std::to_string(t) +
+                                            " must be finite and positive, got " + std::to_string(step_sizes_[t]));
+            }
+        }
+    }
 
     ALILQRSolver(const ALILQRSolver &) = delete;
     ALILQRSolver &operator=(const ALILQRSolver &) = delete;
@@ -26,7 +38,6 @@ public:
     [[maybe_unused]]
     void AddCostFuncs(const CostTermConfig &config) {
         problem_->SetConfig(config);
-        //        problem_->add_cost_funcs();
     }
 
     void Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq);
@@ -108,8 +119,6 @@ private:
     void UpdateConvergenceState();
 
     bool AnyPenaltyAtMax() const;
-
-    //    void UpdatePenalties() const;
 
     double GetGradientNorm(const VecUs &l, const Controls &u) const;
 

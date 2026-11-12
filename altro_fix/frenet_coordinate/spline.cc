@@ -110,8 +110,9 @@ std::vector<double> band_matrix::l_solve(const std::vector<double> &b) const {
     for (int i = 0; i < this->dim(); i++) {
         sum = 0;
         j_start = std::max(0, int(i) - this->num_lower());
-        for (int j = j_start; j < i; j++)
+        for (int j = j_start; j < i; j++) {
             sum += this->operator()(i, j) * x[j];
+        }
         x[i] = (b[i] * this->saved_diag(i)) - sum;
     }
     return x;
@@ -125,8 +126,9 @@ std::vector<double> band_matrix::r_solve(const std::vector<double> &b) const {
     for (int i = this->dim() - 1; i >= 0; i--) {
         sum = 0;
         j_stop = std::min(this->dim() - 1, i + this->num_upper());
-        for (int j = i + 1; j <= j_stop; j++)
+        for (int j = i + 1; j <= j_stop; j++) {
             sum += this->operator()(i, j) * x[j];
+        }
         x[i] = (b[i] - sum) / this->operator()(i, i);
     }
     return x;
@@ -229,37 +231,25 @@ void spline::set_points_old(const std::vector<double> &x, const std::vector<doub
         // setting up the matrix and right hand side of the equation system
         // for the parameters b[]
         band_matrix A(n, 1, 1);
-        //    MatrixXd A = MatrixXd::Zero(n, n);
-        //    MatrixXd A_ = MatrixXd::Zero(n, n);
-        //    MatrixXd B = MatrixXd::Zero(n, 1);
         std::vector<double> rhs(n);
         for (int i = 1; i < n - 1; i++) {
             A(i, i - 1) = 1.0 / 3.0 * (x[i] - x[i - 1]);
             A(i, i) = 2.0 / 3.0 * (x[i + 1] - x[i - 1]);
             A(i, i + 1) = 1.0 / 3.0 * (x[i + 1] - x[i]);
-            //      A_(i, i - 1) = 1.0 / 3.0 * (x[i] - x[i - 1]);
-            //      A_(i, i) = 2.0 / 3.0 * (x[i + 1] - x[i - 1]);
-            //      A_(i, i + 1) = 1.0 / 3.0 * (x[i + 1] - x[i]);
             rhs[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]) - (y[i] - y[i - 1]) / (x[i] - x[i - 1]);
-            //      B(i) = (y[i + 1] - y[i]) / (x[i + 1] - x[i]) -
-            //             (y[i] - y[i - 1]) / (x[i] - x[i - 1]);
         }
         // boundary conditions
         if (m_left == spline::second_deriv) {
             // 2*b[0] = f''
             A(0, 0) = 2.0;
             A(0, 1) = 0.0;
-            //      A_(0, 0) = 2.0;
-            //      A_(0, 1) = 0.0;
             rhs[0] = m_left_value;
-            //      B(0) = m_left_value;
         } else if (m_left == spline::first_deriv) {
             // c[0] = f', needs to be re-expressed in terms of b:
             // (2b[0]+b[1])(x[1]-x[0]) = 3 ((y[1]-y[0])/(x[1]-x[0]) - f')
             A(0, 0) = 2.0 * (x[1] - x[0]);
             A(0, 1) = 1.0 * (x[1] - x[0]);
             rhs[0] = 3.0 * ((y[1] - y[0]) / (x[1] - x[0]) - m_left_value);
-            //      B(0) = 3.0 * ((y[1] - y[0]) / (x[1] - x[0]) - m_left_value);
         } else {
             assert(false);
         }
@@ -267,10 +257,7 @@ void spline::set_points_old(const std::vector<double> &x, const std::vector<doub
             // 2*b[n-1] = f''
             A(n - 1, n - 1) = 2.0;
             A(n - 1, n - 2) = 0.0;
-            //      A_(n - 1, n - 1) = 2.0;
-            //      A_(n - 1, n - 2) =0.0;
             rhs[n - 1] = m_right_value;
-            //      B(n - 1) = m_right_value;
         } else if (m_right == spline::first_deriv) {
             // c[n-1] = f', needs to be re-expressed in terms of b:
             // (b[n-2]+2b[n-1])(x[n-1]-x[n-2])
@@ -278,19 +265,11 @@ void spline::set_points_old(const std::vector<double> &x, const std::vector<doub
             A(n - 1, n - 1) = 2.0 * (x[n - 1] - x[n - 2]);
             A(n - 1, n - 2) = 1.0 * (x[n - 1] - x[n - 2]);
             rhs[n - 1] = 3.0 * (m_right_value - (y[n - 1] - y[n - 2]) / (x[n - 1] - x[n - 2]));
-            //      B(n - 1) =
-            //              3.0 * (m_right_value - (y[n - 1] - y[n - 2]) / (x[n - 1] - x[n - 2]));
         } else {
             assert(false);
         }
-        //    std::cout << A_ << std::endl;
-        //    std::cout << B << std::endl;
         // solve the equation system to obtain the parameters b[]
         m_b = A.lu_solve(rhs);
-        //    VectorXd C = A.colPivHouseholderQr().solve(B);
-        //    m_b.resize(C.size());
-        //    for (int i = 0; i < C.size(); ++i)
-        //        m_b[i] = C(i);
         // calculate parameters a[] and c[] based on b[]
         m_a.resize(n);
         m_c.resize(n);
@@ -320,5 +299,7 @@ void spline::set_points_old(const std::vector<double> &x, const std::vector<doub
     // m_b[n-1] is determined by the boundary condition
     m_a[n - 1] = 0.0;
     m_c[n - 1] = 3.0 * m_a[n - 2] * h * h + 2.0 * m_b[n - 2] * h + m_c[n - 2]; // = f'_{n-2}(x_{n-1})
-    if (m_force_linear_extrapolation == true) m_b[n - 1] = 0.0;
+    if (m_force_linear_extrapolation == true) {
+        m_b[n - 1] = 0.0;
+    }
 }
