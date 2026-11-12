@@ -10,10 +10,8 @@ namespace altro {
 
 enum class ProjectionMethod {
     Riccati,
-
-    KktEigen,
-
-    KktQdldl,
+    KKTEigen,
+    KKTQdldl,
 };
 
 std::string_view ProjectionMethodName(ProjectionMethod method);

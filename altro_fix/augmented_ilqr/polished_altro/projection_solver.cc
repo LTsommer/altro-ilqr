@@ -11,7 +11,7 @@ namespace altro {
 namespace {
 
 constexpr ProjectionMethod kMethods[] = {
-        ProjectionMethod::Riccati, ProjectionMethod::KktEigen, ProjectionMethod::KktQdldl};
+        ProjectionMethod::Riccati, ProjectionMethod::KKTEigen, ProjectionMethod::KKTQdldl};
 
 using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor, QDLDL_int>;
 using Triplets = std::vector<Eigen::Triplet<double, QDLDL_int>>;
@@ -52,6 +52,38 @@ bool SolveRiccati(const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>
         V = Sxx + Sux.transpose() * K;
         V = 0.5 * (V + V.transpose());
         v = sx + Sux.transpose() * k;
+    }
+    return true;
+}
+
+// Completing the square backward along the dynamics gives the pivots of the reduced Hessian.
+// Read the same symmetric blocks as the sparse KKT assembly.
+template<typename Scalar, unsigned StateDim, unsigned ControlDim>
+bool HasPositiveReducedHessian(const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
+                               const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q) {
+    using StateHessian = Eigen::Matrix<Scalar, StateDim, StateDim>;
+    using ControlHessian = Eigen::Matrix<Scalar, ControlDim, ControlDim>;
+    using ControlStateBlock = Eigen::Matrix<Scalar, ControlDim, StateDim>;
+
+    StateHessian V = q.back().Qxx.template selfadjointView<Eigen::Upper>();
+    for (std::size_t remaining = dynamics.size(); remaining > 0; --remaining) {
+        const auto t = remaining - 1;
+        const auto &[A, B] = dynamics[t];
+        const ControlHessian Quu = q[t].Quu.template selfadjointView<Eigen::Upper>();
+        const ControlHessian Suu = Quu + B.transpose() * V * B;
+        if (!Suu.allFinite()) {
+            return false;
+        }
+        const Eigen::LLT<ControlHessian, Eigen::Upper> llt(Suu);
+        if (llt.info() != Eigen::Success) {
+            return false;
+        }
+        if (t > 0) {
+            const StateHessian Qxx = q[t].Qxx.template selfadjointView<Eigen::Upper>();
+            const ControlStateBlock Sux = q[t].Qux + B.transpose() * V * A;
+            V = (Qxx + A.transpose() * V * A - Sux.transpose() * llt.solve(Sux)).eval();
+            V = (0.5 * V + 0.5 * V.transpose()).eval();
+        }
     }
     return true;
 }
@@ -121,6 +153,11 @@ bool SolveKkt(ProjectionMethod method,
               const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
               const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q,
               ProjectionStep<Scalar, StateDim, ControlDim> &step) {
+    const bool use_eigen = method == ProjectionMethod::KKTEigen;
+    if (use_eigen && !HasPositiveReducedHessian(dynamics, q)) {
+        return false;
+    }
+
     // Primal variables are stage ordered: [u_0, x_1, u_1, ..., x_T]. Place the dynamics
     // multipliers last so LDL^T eliminates the stage Hessians before the zero diagonal block.
     const auto horizon = static_cast<QDLDL_int>(dynamics.size());
@@ -165,8 +202,8 @@ bool SolveKkt(ProjectionMethod method,
     }
 
     Eigen::VectorXd solution;
-    const bool solved = method == ProjectionMethod::KktEigen ? SolveWithEigen(upper, rhs, solution)
-                                                             : SolveWithQdldl(upper, rhs, primal_size, solution);
+    const bool solved =
+            use_eigen ? SolveWithEigen(upper, rhs, solution) : SolveWithQdldl(upper, rhs, primal_size, solution);
     if (!solved || !solution.allFinite()) {
         return false;
     }
@@ -194,9 +231,9 @@ std::string_view ProjectionMethodName(ProjectionMethod method) {
     switch (method) {
         case ProjectionMethod::Riccati:
             return "riccati";
-        case ProjectionMethod::KktEigen:
+        case ProjectionMethod::KKTEigen:
             return "kkt-eigen";
-        case ProjectionMethod::KktQdldl:
+        case ProjectionMethod::KKTQdldl:
             return "kkt-qdldl";
     }
     return "unknown";
@@ -222,8 +259,8 @@ bool SolveProjection(ProjectionMethod method,
     switch (method) {
         case ProjectionMethod::Riccati:
             return SolveRiccati(dynamics, quadratics, step);
-        case ProjectionMethod::KktEigen:
-        case ProjectionMethod::KktQdldl:
+        case ProjectionMethod::KKTEigen:
+        case ProjectionMethod::KKTQdldl:
             return SolveKkt(method, dynamics, quadratics, step);
     }
     return false;

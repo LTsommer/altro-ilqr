@@ -239,12 +239,12 @@ $$
 
 **投影问题**：记生效约束线性化为 $C\,\delta z + c = 0$， $H$ 为原始代价项的 Hessian（按平均对角元归一化，并加小的正则）。每一步求解
 
-$$
+```math
 \begin{aligned}
 \min_{\delta x,\delta u}\quad & \frac{1}{2}\delta z^T H\,\delta z+\frac{1}{2\delta}\lVert C\,\delta z+c\rVert^2\\
 \text{s.t.}\quad & \delta x_{t+1}=A_t\,\delta x_t+B_t\,\delta u_t,\qquad \delta x_0=0.
 \end{aligned}
-$$
+```
 
 动力学是硬约束，生效约束以 $1/\delta$ 的二次罚并入。 $\delta$ 很小时接近精确投影；约束互相冲突时自动退化为阻尼最小二乘的折中。 $\delta$ 按 Levenberg–Marquardt 方式自适应：步长被接受后减小，被拒绝后增大。
 
@@ -268,15 +268,25 @@ $$
 
 $\alpha$ 从 1 开始折半，只有最大约束违反量下降时才接受。违反量相对下降小于 0.1% 时停止。
 
-**稀疏 KKT** 使用同一个 $Q$、$q$，把线性化动力学写成 $D\,\delta z=0$，并从变量中去掉固定的 $\delta x_0$。两个后端求解同一个系统：
+**稀疏 KKT** 沿用 Riccati 的二次项与线性项，并把固定的初始状态增量从决策变量中去掉。线性化动力学 $D \delta z=0$ 作为硬等式。两个后端求解同一个系统。
 
-$$
-\begin{bmatrix}Q & D^T\\ D & 0\end{bmatrix}
-\begin{bmatrix}\delta z\\ \lambda\end{bmatrix}
-=\begin{bmatrix}-q\\ 0\end{bmatrix}.
-$$
+```math
+\begin{bmatrix}
+Q & D^T \\
+D & 0
+\end{bmatrix}
+\begin{bmatrix}
+\delta z \\
+\lambda
+\end{bmatrix}
+=
+\begin{bmatrix}
+-q \\
+0
+\end{bmatrix}
+```
 
-Eigen 使用 `SparseLU`，QDLDL 按原变量优先的顺序做 $LDL^T$ 分解。两者都校验方程残差。KKT 用 $u'_t=u_t+\alpha\delta u_t$ 从 $x_0$ 重新积分。Riccati 和 KKT 的候选轨迹都由同一个非线性模型生成，线搜索共用最大违反量判据。
+Eigen 先检查动力学可行方向上的正曲率，再使用 `SparseLU`，QDLDL 按原变量优先的顺序做 $LDL^T$ 分解。两者都校验方程残差。KKT 用 $u'_t=u_t+\alpha\delta u_t$ 从 $x_0$ 重新积分。Riccati 和 KKT 的候选轨迹都由同一个非线性模型生成，线搜索共用最大违反量判据。
 
 > 早期版本把动力学作为等式行和生效约束一起放进全轨迹 KKT 系统、用稀疏 $LDL^T$ 求解。所有行共用阻尼，约束冲突时会牺牲动力学（投影后残差最高 0.059），每次投影 3～12 ms。改用 Riccati 递推后为 0.04～0.5 ms，残差为 0，见“优化效果”。
 
@@ -369,7 +379,7 @@ mkdir -p out
 ./build/altro_fix/mp out kkt-qdldl
 ```
 
-C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KktEigen` 或 `altro::ProjectionMethod::KktQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
+C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KKTEigen` 或 `altro::ProjectionMethod::KKTQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
 
 ### 查看结果
 

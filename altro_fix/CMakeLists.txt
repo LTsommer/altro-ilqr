@@ -102,3 +102,5 @@ add_executable(test test_constraint.cpp
         ${AL})
 target_link_libraries(test PUBLIC Eigen3::Eigen)
 
+add_executable(test_projection test_projection.cpp)
+target_link_libraries(test_projection PRIVATE projection_solver)
