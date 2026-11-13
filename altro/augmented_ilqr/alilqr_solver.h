@@ -9,15 +9,13 @@
 #include "augmented_ilqr/ilqr_process.hpp"
 #include <cmath>
 #include <cstdint>
-#include <stdexcept>
 #include <string>
 
 template<typename T, unsigned int M, unsigned int N>
 class ALILQRSolver {
 public:
     OCP_VARIABLES(T, M, N)
-    // Throws std::invalid_argument unless every step size is finite and positive: the dynamics
-    // (and their integrators) are only defined for such steps, and every solver path uses them.
+    // Every step size must be finite and positive for the dynamics and their integrators.
     explicit ALILQRSolver(
             std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface,
             const vector<double> &steps);

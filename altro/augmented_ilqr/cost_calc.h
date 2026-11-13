@@ -2,17 +2,13 @@
 // Created by LTsommer on 2024/5/30.
 //
 
-#ifndef CILQR_COST_CALC_H
-#define CILQR_COST_CALC_H
+#ifndef ALTRO_COST_CALC_H
+#define ALTRO_COST_CALC_H
 
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_term_config.hpp"
 #include "constraint_definition/constraint_values.hpp"
 #include "frenet_coordinate/frenet_coordinate_system.h"
-#include <iostream>
-
-using std::cout;
-using std::endl;
 
 template<typename T, unsigned int M, unsigned int N>
 class CostUnion {
@@ -128,4 +124,4 @@ private:
 template<typename T, unsigned M, unsigned N>
 using CostUnionPtr = std::unique_ptr<CostUnion<T, M, N>>;
 
-#endif //CILQR_COST_CALC_H
+#endif //ALTRO_COST_CALC_H

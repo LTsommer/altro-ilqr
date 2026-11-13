@@ -4,6 +4,8 @@
 
 #include "augmented_ilqr/cost_calc.h"
 
+#include <iostream>
+
 template<typename T, unsigned M, unsigned int N>
 double CostUnion<T, M, N>::Evaluate(const int step,
                                     const State &x,

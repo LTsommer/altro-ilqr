@@ -2,16 +2,16 @@
 // Created by LTsommer on 2024/6/20.
 //
 
-#ifndef ALILQR_BASIC_CONSTRAINT_H
-#define ALILQR_BASIC_CONSTRAINT_H
+#ifndef ALTRO_BASIC_CONSTRAINT_HPP
+#define ALTRO_BASIC_CONSTRAINT_HPP
 
 #include "ilqr_system_declaration.hpp"
 #include "common/math_utils.h"
 #include "constraint_definition/constraint_formulation.h"
 #include "constraint_definition/constraint.hpp"
-#include <iostream>
-
-using std::cout;
+#include <cassert>
+#include <cstdlib>
+#include <string>
 
 // Which distance to the boundary a LateralOffsetConstraint keeps.
 enum class BoundMargin {
@@ -103,6 +103,7 @@ public:
         }
 
         lx.setZero();
+        lu.setZero();
         if (step < bound_types_.size() &&
             bound_types_[step] == BoundType::Default) {
             return true;
@@ -110,7 +111,6 @@ public:
         lx(0) = a_[step](0);
         lx(1) = a_[step](1);
 
-        lu.setZero();
         return true;
     }
 
@@ -135,8 +135,8 @@ private:
 
 /*
   J_safe = w_plb * f(g_plb(x)) + w_prb * f(g_prb(x))
-  where f() is the penalty function, currently using one-sided quadratic
-  function, and g_plb(x), g_prb(x) represents the safe constraints
+  where f() is the one-sided linear penalty and g_plb(x), g_prb(x) are
+  the signed safe boundary residuals.
  */
 template<typename T, unsigned M, unsigned int N>
 class SafeConstraint final : public Constraint<T, M, N, Inequality> {
@@ -145,8 +145,8 @@ public:
     SafeConstraint(const CostTermConfig &config)
         : w_plb_(config.weights.at(WeightPlb)),
           w_prb_(config.weights.at(WeightPrb)),
-          steps_num_(config.p_bound.size()),
-          line_segment_constraint_lb_(config, true),
+          line_segment_constraint_lb_(
+                  CheckCoverage(config, config.steps.size()), true),
           line_segment_constraint_rb_(config, false) {
         Constraint<T, M, N, Inequality>::SetHorizon(config.steps.size());
     }
@@ -154,6 +154,7 @@ public:
     ~SafeConstraint() = default;
 
     void UpdateConfig(const CostTermConfig &config) override {
+        CheckCoverage(config, this->Horizon());
         line_segment_constraint_lb_.UpdateConfig(config, true);
         line_segment_constraint_rb_.UpdateConfig(config, false);
     }
@@ -172,10 +173,14 @@ public:
                         const State &x,
                         const Control &u,
                         RawConstraintRows<T, M, N> &out) const override {
-        AppendRawConstraint<T, M, N>(
-                line_segment_constraint_lb_, step, x, u, out);
-        AppendRawConstraint<T, M, N>(
-                line_segment_constraint_rb_, step, x, u, out);
+        if (!IsStateStep(step)) {
+            return false;
+        }
+        RawConstraintRow<T, M, N> left, right;
+        EvaluateSides(step, x, u, left.g, right.g);
+        GradientSides(step, x, u, left.gx, left.gu, right.gx, right.gu);
+        out.push_back(left);
+        out.push_back(right);
         return true;
     }
 
@@ -184,15 +189,12 @@ public:
                           const Control &u,
                           double &val) const override {
         val = 0.0;
-        if (step > steps_num_) {
+        if (!IsStateStep(step)) {
             return false;
         }
 
-        // using one side quadratic cost f(g(x))
-        double g_lb{0.0};
-        double g_rb{0.0};
-        line_segment_constraint_lb_.Evaluate(step, x, u, g_lb);
-        line_segment_constraint_rb_.Evaluate(step, x, u, g_rb);
+        double g_lb, g_rb;
+        EvaluateSides(step, x, u, g_lb, g_rb);
 
         double f_lb = one_side_cost_.Evaluate(g_lb);
         double f_rb = one_side_cost_.Evaluate(g_rb);
@@ -209,21 +211,16 @@ public:
                           Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
-        if (step > steps_num_) {
+        if (!IsStateStep(step)) {
             return false;
         }
 
-        double g_lb{0.0};
-        double g_rb{0.0};
-        line_segment_constraint_lb_.Evaluate(step, x, u, g_lb);
-        line_segment_constraint_rb_.Evaluate(step, x, u, g_rb);
+        double g_lb, g_rb;
+        EvaluateSides(step, x, u, g_lb, g_rb);
 
         VecX grad_gx_lb, grad_gx_rb;
         VecU grad_gu_lb, grad_gu_rb;
-        line_segment_constraint_lb_.Gradient(
-                step, x, u, grad_gx_lb, grad_gu_lb);
-        line_segment_constraint_rb_.Gradient(
-                step, x, u, grad_gx_rb, grad_gu_rb);
+        GradientSides(step, x, u, grad_gx_lb, grad_gu_lb, grad_gx_rb, grad_gu_rb);
 
         double grad_f_lb{0.0};
         double grad_f_rb{0.0};
@@ -245,21 +242,16 @@ public:
         lxx.setZero();
         luu.setZero();
         lxu.setZero();
-        if (step > steps_num_) {
+        if (!IsStateStep(step)) {
             return false;
         }
 
-        double g_lb{0.0};
-        double g_rb{0.0};
-        line_segment_constraint_lb_.Evaluate(step, x, u, g_lb);
-        line_segment_constraint_rb_.Evaluate(step, x, u, g_rb);
+        double g_lb, g_rb;
+        EvaluateSides(step, x, u, g_lb, g_rb);
 
         VecX grad_gx_lb, grad_gx_rb;
         VecU grad_gu_lb, grad_gu_rb;
-        line_segment_constraint_lb_.Gradient(
-                step, x, u, grad_gx_lb, grad_gu_lb);
-        line_segment_constraint_rb_.Gradient(
-                step, x, u, grad_gx_rb, grad_gu_rb);
+        GradientSides(step, x, u, grad_gx_lb, grad_gu_lb, grad_gx_rb, grad_gu_rb);
 
         double grad_f_lb{0.0};
         double grad_f_rb{0.0};
@@ -295,9 +287,43 @@ public:
     };
 
 private:
+    static const CostTermConfig &CheckCoverage(const CostTermConfig &config,
+                                               std::size_t horizon) {
+        if (config.p_bound.size() <= horizon) {
+            assert(false && "SafeConstraint: missing boundary at a state step (including terminal)");
+            std::abort();
+        }
+        for (const auto &segment : config.p_bound) {
+            if (segment.size() < 4) {
+                assert(false && "SafeConstraint: missing boundary endpoints");
+                std::abort();
+            }
+        }
+        return config;
+    }
+
+    bool IsStateStep(int step) const { return step >= 0 && step <= this->Horizon(); }
+
+    void EvaluateSides(int step, const State &x, const Control &u,
+                       double &g_lb, double &g_rb) const {
+        if (!line_segment_constraint_lb_.Evaluate(step, x, u, g_lb) ||
+            !line_segment_constraint_rb_.Evaluate(step, x, u, g_rb)) {
+            assert(false && "SafeConstraint: missing boundary at state step");
+            std::abort();
+        }
+    }
+
+    void GradientSides(int step, const State &x, const Control &u,
+                       VecX &gx_lb, VecU &gu_lb, VecX &gx_rb, VecU &gu_rb) const {
+        if (!line_segment_constraint_lb_.Gradient(step, x, u, gx_lb, gu_lb) ||
+            !line_segment_constraint_rb_.Gradient(step, x, u, gx_rb, gu_rb)) {
+            assert(false && "SafeConstraint: missing boundary gradient at state step");
+            std::abort();
+        }
+    }
+
     const double w_plb_;       // path left bound weight
     const double w_prb_;       // path right bound weight
-    const uint32_t steps_num_; // total number of steps
     const OneSideCost one_side_cost_;
     LateralOffsetConstraint<T, M, N> line_segment_constraint_lb_;
     LateralOffsetConstraint<T, M, N> line_segment_constraint_rb_;
@@ -1100,4 +1126,4 @@ private:
     LateralOffsetConstraint<T, M, N> rb_;
 };
 
-#endif //ALILQR_BASIC_CONSTRAINT_H
+#endif //ALTRO_BASIC_CONSTRAINT_HPP

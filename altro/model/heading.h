@@ -2,7 +2,8 @@
 #define CILQR_MODEL_HEADING_H
 
 #include "common/math_utils.h"
-#include <stdexcept>
+#include <cassert>
+#include <cstdlib>
 
 namespace vehicle_heading {
 
@@ -16,7 +17,8 @@ inline bool IsSupportedAngle(double angle) {
 
 inline double PrepareInitialHeading(double angle) {
     if (!IsSupportedAngle(angle)) {
-        throw std::invalid_argument("Initial vehicle heading must be finite and within +/-1024 rad");
+        assert(false && "Initial vehicle heading must be finite and within +/-1024 rad");
+        std::abort();
     }
     return NormalizeAngle(angle);
 }

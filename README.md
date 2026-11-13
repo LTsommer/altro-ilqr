@@ -374,9 +374,12 @@ cmake --build build/altro --parallel
 
 # 约束/积分相关的手工实验程序
 ./build/altro/test
+
+# 运行自动回归
+ctest --test-dir build/altro --output-on-failure
 ```
 
-构建文件定义了三个可执行目标：`alilqr`、`mp` 和 `test`。
+`test_constraint` 构建目标生成 `test` 可执行文件，投影回归由 `test_projection` 运行。
 
 ### 选择 polishing 求解器
 
@@ -522,7 +525,7 @@ clang-format 不在 `PATH` 中时，用 `CLANG_FORMAT=/path/to/clang-format` 指
 ## 限制与已知边界
 
 - 示例数据和参数写死在 `.cpp` 中，结果不应被当作通用性能基准；
-- `test` 是手工验证可执行程序，而不是 Catch2、GoogleTest 等框架下的自动化测试套件；
+- `test` 保留手工实验输出，也由 CTest 运行其中的约束回归；
 - 求解器仍是局部优化方法，初值、权重、罚因子、离散步长和参考线光滑度都会显著影响收敛质量；
 - 增广拉格朗日的二阶项使用 Gauss–Newton 近似，忽略约束的二阶导数；
 - polishing 只适合在 AL-iLQR 已接近可行时做最后修正（默认违反量 < 0.1 才执行）；约束互相冲突时它给出的是最小二乘折中，而不是可行解；

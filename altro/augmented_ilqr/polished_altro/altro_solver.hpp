@@ -2,8 +2,8 @@
 // Created by LTsommer on 2024/6/25.
 //
 
-#ifndef ALILQR_ALTRO_SOLVER_HPP
-#define ALILQR_ALTRO_SOLVER_HPP
+#ifndef ALTRO_SOLVER_HPP
+#define ALTRO_SOLVER_HPP
 
 #include "augmented_ilqr/alilqr_solver.h"
 #include "augmented_ilqr/cost_calc.h"
@@ -14,9 +14,6 @@
 #include <cassert>
 #include <string_view>
 #include <vector>
-
-using std::cout;
-using std::endl;
 
 namespace altro {
 
@@ -60,23 +57,6 @@ enum class JacSize {
     Gradient,
     Jacobian,
 };
-
-template<typename... Args>
-void print(const Args &...args) {
-    using arr = int[];
-    (void)arr{0, (std::cout << args << ", ", 0)...};
-    cout << "\n";
-    return;
-}
-
-template<typename T>
-std::ostream &operator<<(std::ostream &os, const std::vector<T> &vec) {
-    for (const auto &element : vec) {
-        os << element << ' ';
-    }
-    os << "\n";
-    return os;
-}
 
 template<typename T, unsigned M, unsigned N>
 class ALTROSolver {
@@ -178,7 +158,7 @@ public:
         for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints()) {
             vector<double> vio;
             vio.reserve(steps_num_);
-            cout << cons_ptr->GetName() << "\n";
+            std::cout << cons_ptr->GetName() << "\n";
             for (int t = 0; t < steps_num_; ++t) {
                 bool success = cons_ptr->Evaluate(t, x[t], u[t]);
                 if (success) {
@@ -196,7 +176,7 @@ public:
         for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints()) {
             vector<double> vio;
             vio.reserve(steps_num_);
-            cout << cons_ptr->GetName() << "\n";
+            std::cout << cons_ptr->GetName() << "\n";
             for (int t = 0; t < steps_num_; ++t) {
                 bool success = cons_ptr->Evaluate(t, x[t], u[t]);
                 if (success) {
@@ -488,7 +468,7 @@ private:
         for (int iter = 0; iter < kMaxProjectionIter; ++iter) {
             const double v = MaxConstraintViolation(x, u);
             if (solver_->Verbose()) {
-                cout << "ALTRO projection iter " << iter
+                std::cout << "ALTRO projection iter " << iter
                      << ": max violation = " << v << "\n";
             }
             if (v < kTol) {
@@ -498,7 +478,7 @@ private:
             // making progress.
             if (v > (1.0 - kMinProjectionProgress) * v_prev) {
                 if (solver_->Verbose()) {
-                    cout << "ALTRO projection: violation stalled, stop\n";
+                    std::cout << "ALTRO projection: violation stalled, stop\n";
                 }
                 return {ProjectionStatus::Stalled, accepted_steps};
             }
@@ -544,7 +524,7 @@ private:
                         alpha *= 0.5;
                     }
                 } else if (solver_->Verbose()) {
-                    cout << "ALTRO projection: "
+                    std::cout << "ALTRO projection: "
                          << altro::ProjectionMethodName(projection_method_)
                          << " failed to solve at damping " << delta << "\n";
                 }
@@ -575,34 +555,34 @@ private:
             return;
         }
 
-        cout << "AL-iLQR Solver Status : ";
+        std::cout << "AL-iLQR Solver Status : ";
         solver_->ShowSolverState();
-        cout << "AL-iLQR iterations : " << solver_->TotalIterations()
+        std::cout << "AL-iLQR iterations : " << solver_->TotalIterations()
              << ", time : " << solver_->SolveTimeMs() << " ms\n";
-        cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
+        std::cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
         if (project) {
-            cout << "ALTRO projection method : "
+            std::cout << "ALTRO projection method : "
                  << altro::ProjectionMethodName(projection_method_) << "\n";
-            cout << "ALTRO projection : " << projection.accepted_steps
+            std::cout << "ALTRO projection : " << projection.accepted_steps
                  << " steps, " << proj_ms << " ms\n";
         } else {
-            cout << "ALTRO projection skipped: AL-iLQR violation above "
+            std::cout << "ALTRO projection skipped: AL-iLQR violation above "
                  << projection_trigger_ << "\n";
         }
-        cout << "ALTRO projection status : "
+        std::cout << "ALTRO projection status : "
              << altro::ProjectionStatusName(projection.status) << "\n";
-        cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
+        std::cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
         const auto &cost_union = solver_->Problem().GetCostUnionPtr();
         for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints()) {
-            cout << "  " << cons_ptr->GetName()
+            std::cout << "  " << cons_ptr->GetName()
                  << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
         }
         for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints()) {
-            cout << "  " << cons_ptr->GetName()
+            std::cout << "  " << cons_ptr->GetName()
                  << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
         }
-        cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
-        cout << "altro solver consumes : " << total_ms << " ms\n";
+        std::cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
+        std::cout << "altro solver consumes : " << total_ms << " ms\n";
     }
 
     const double GetMaxViolation() const {
@@ -620,4 +600,4 @@ private:
             altro::ProjectionMethod::Riccati;
 };
 
-#endif //ALILQR_ALTRO_SOLVER_HPP
+#endif //ALTRO_SOLVER_HPP
