@@ -71,13 +71,42 @@ double LineSegment2d::DistanceTo(const Vec2d &point) const {
 }
 
 double LineSegment2d::DistanceTo(const LineSegment2d &other) const {
-    if (HasIntersect(other)) {
+    Vec2d nearest, other_nearest;
+    return DistanceTo(other, &nearest, &other_nearest);
+}
+
+double LineSegment2d::DistanceTo(const LineSegment2d &other,
+                                 Vec2d *nearest,
+                                 Vec2d *other_nearest) const {
+    assert(nearest != nullptr && other_nearest != nullptr);
+    Vec2d contact;
+    if (GetIntersect(other, &contact)) {
+        *nearest = contact;
+        *other_nearest = contact;
         return 0.0;
     }
-    return std::min({DistanceTo(other.start()),
-                     DistanceTo(other.end()),
-                     other.DistanceTo(start_),
-                     other.DistanceTo(end_)});
+    Vec2d on_this, on_other;
+    double distance = DistanceTo(other.start(), nearest);
+    *other_nearest = other.start();
+    double candidate = DistanceTo(other.end(), &on_this);
+    if (candidate < distance) {
+        distance = candidate;
+        *nearest = on_this;
+        *other_nearest = other.end();
+    }
+    candidate = other.DistanceTo(start(), &on_other);
+    if (candidate < distance) {
+        distance = candidate;
+        *nearest = start();
+        *other_nearest = on_other;
+    }
+    candidate = other.DistanceTo(end(), &on_other);
+    if (candidate < distance) {
+        distance = candidate;
+        *nearest = end();
+        *other_nearest = on_other;
+    }
+    return distance;
 }
 
 double LineSegment2d::DistanceTo(const Vec2d &point,

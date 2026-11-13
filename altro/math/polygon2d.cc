@@ -51,25 +51,36 @@ double Polygon2d::DistanceSquareTo(const Vec2d &point) const {
 }
 
 double Polygon2d::DistanceTo(const LineSegment2d &line_segment) const {
-    if (line_segment.length() <= kMathEpsilon) {
-        return DistanceTo(line_segment.start());
-    }
-    assert(points_.size() >= 3);
-    if (IsPointIn(line_segment.center())) {
-        return 0.0;
-    }
-    if (std::any_of(line_segments_.begin(),
-                    line_segments_.end(),
-                    [&](const LineSegment2d &poly_seg) {
-                        return poly_seg.HasIntersect(line_segment);
-                    })) {
-        return 0.0;
-    }
+    Vec2d on_segment, on_polygon;
+    return DistanceTo(line_segment, &on_polygon, &on_segment);
+}
 
-    double distance = std::min(DistanceTo(line_segment.start()),
-                               DistanceTo(line_segment.end()));
-    for (int i = 0; i < num_points_; ++i) {
-        distance = std::min(distance, line_segment.DistanceTo(points_[i]));
+double Polygon2d::DistanceTo(const LineSegment2d &line_segment,
+                             Vec2d *on_polygon,
+                             Vec2d *on_segment) const {
+    assert(on_polygon != nullptr && on_segment != nullptr);
+    assert(points_.size() >= 3);
+    if (IsPointIn(line_segment.start())) {
+        *on_segment = *on_polygon = line_segment.start();
+        return 0.0;
+    }
+    if (line_segment.length() > kMathEpsilon && IsPointIn(line_segment.end())) {
+        *on_segment = *on_polygon = line_segment.end();
+        return 0.0;
+    }
+    double distance = std::numeric_limits<double>::infinity();
+    for (const auto &edge : line_segments_) {
+        Vec2d segment_point, polygon_point;
+        const double candidate =
+                line_segment.DistanceTo(edge, &segment_point, &polygon_point);
+        if (candidate < distance) {
+            distance = candidate;
+            *on_segment = segment_point;
+            *on_polygon = polygon_point;
+            if (distance == 0.0) {
+                break;
+            }
+        }
     }
     return distance;
 }

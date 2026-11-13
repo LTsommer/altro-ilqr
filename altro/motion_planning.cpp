@@ -16,6 +16,9 @@
 #include "common/path_validation.hpp"
 #include "common/solver_cli.hpp"
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <limits>
 #include <typeindex>
 #include <unordered_map>
 #include <string>
@@ -408,6 +411,92 @@ using Model = MixModel;
 using State = Model::State;
 using Controls = Model::Controls;
 
+void ExportPathValidation(
+        const std::string &output_dir,
+        const altro::PathSceneGeometry &geometry,
+        const vector<Vec2d> &path,
+        const std::optional<altro::PathValidationFailure> &failure,
+        const vector<altro::PathClearance> &clearances) {
+    const std::string filename = output_dir + "/mp_path_validation.json";
+    std::ofstream out(filename);
+    out << std::setprecision(std::numeric_limits<double>::max_digits10);
+    const auto write_number = [&out](double value) {
+        if (std::isfinite(value)) {
+            out << value;
+        } else {
+            out << "null";
+        }
+    };
+    const auto write_point = [&](const Vec2d &point) {
+        out << '[';
+        write_number(point.x());
+        out << ',';
+        write_number(point.y());
+        out << ']';
+    };
+    const auto write_points = [&](const vector<Vec2d> &points) {
+        out << '[';
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            if (i != 0) {
+                out << ',';
+            }
+            write_point(points[i]);
+        }
+        out << ']';
+    };
+
+    out << "{\n  \"vehicle_radius\": ";
+    write_number(geometry.vehicle_radius);
+    out << ",\n  \"path\": ";
+    write_points(path);
+    out << ",\n  \"left_boundary\": ";
+    write_points(geometry.left_boundary);
+    out << ",\n  \"right_boundary\": ";
+    write_points(geometry.right_boundary);
+    out << ",\n  \"obstacles\": [";
+    for (std::size_t i = 0; i < geometry.obstacles.size(); ++i) {
+        if (i != 0) {
+            out << ',';
+        }
+        write_points(geometry.obstacles[i]);
+    }
+    out << "],\n  \"failure\": ";
+    if (failure) {
+        out << "{\"reason\":" << std::quoted(failure->reason)
+            << ",\"segment\":";
+        if (failure->segment) {
+            out << *failure->segment;
+        } else {
+            out << "null";
+        }
+        out << '}';
+    } else {
+        out << "null";
+    }
+    out << ",\n  \"clearances\": [";
+    bool first = true;
+    for (const auto &closest : clearances) {
+        if (!closest.segment) {
+            continue;
+        }
+        out << (first ? "\n    {" : ",\n    {");
+        first = false;
+        out << "\"object\":" << std::quoted(closest.object)
+            << ",\"segment\":" << *closest.segment
+            << ",\"center_distance\":" << closest.center_distance
+            << ",\"path_point\":";
+        write_point(closest.path_point);
+        out << ",\"object_point\":";
+        write_point(closest.object_point);
+        out << '}';
+    }
+    out << "\n  ]\n}\n";
+    out.close();
+    if (!out) {
+        std::cerr << "cannot write " << filename << '\n';
+    }
+}
+
 // Write the data consumed by scripts/plot_results.py.
 void ExportResults(const std::string &output_dir,
                    const Scene &scene,
@@ -508,8 +597,15 @@ int main(int argc, char **argv) {
     const auto projection_status = solver->Solve(x0, u0, x_res_seq, u_res_seq);
 
     // 4. Validate the solved path against the scene geometry.
-    const bool path_valid = altro::ValidateSolvedPath(
-            scene.geometry, x_res_seq, options->solver.print_summary);
+    vector<Vec2d> path;
+    path.reserve(x_res_seq.size());
+    for (const auto &state : x_res_seq) {
+        path.emplace_back(state[mXPos], state[mYPos]);
+    }
+    vector<altro::PathClearance> clearances;
+    const auto failure = altro::ValidatePath(scene.geometry, path, &clearances);
+    const bool path_valid =
+            altro::ReportPathValidation(failure, options->solver.print_summary);
 
     // 5. Export the results for plotting.
     const bool projection_incomplete =
@@ -519,5 +615,7 @@ int main(int argc, char **argv) {
                   x_res_seq,
                   u_res_seq,
                   projection_incomplete);
+    ExportPathValidation(
+            options->output_dir, scene.geometry, path, failure, clearances);
     return path_valid && !projection_incomplete ? 0 : 1;
 }

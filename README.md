@@ -420,7 +420,7 @@ cp altro/config/mp.conf out/mp-custom.conf
 
 ### 查看结果
 
-`alilqr` 和 `mp` 运行结束后各写出两个 CSV 文件：轨迹（`*_trajectory.csv`）和道路（`*_road.csv`，参考线与左右边界）。默认写到当前目录，也可以把输出目录作为第一个参数传入（目录需已存在）。导出在求解计时之外，不影响打印的耗时。
+`alilqr` 和 `mp` 运行结束后各写出轨迹 CSV（`*_trajectory.csv`）和道路 CSV（`*_road.csv`）。`mp` 还导出 `mp_path_validation.json`，包含 Step 4 使用的场景、校验结果及最近点。默认写到当前目录，也可以把输出目录作为第一个参数传入（目录需已存在）。导出在求解计时之外，不影响打印的耗时。
 
 ```bash
 mkdir -p out
@@ -434,6 +434,8 @@ python3 altro/scripts/plot_results.py mp --dir out
 # 无图形界面时保存为 PNG
 python3 altro/scripts/plot_results.py mp --dir out --save out/figs
 ```
+
+`mp` 绘图会读取同次运行的校验 JSON，额外生成 `mp_clearance.png`。绿色表示半径圆沿路径折线的扫掠区域，橙色表示障碍物。图上标注校验结果和最近位置，净距为路径中心到场景对象的距离减去车辆半径。已有的 CSV 可继续生成原来的轨迹图和状态图。
 
 | 文件 | 列 |
 | --- | --- |
