@@ -58,13 +58,17 @@ bool YawRateCostFunc<T, M, N>::Evaluate(const int step, const State &state, cons
 }
 
 template<typename T, unsigned M, unsigned int N>
-bool YawRateCostFunc<T, M, N>::Gradient(
-        const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const {
+bool YawRateCostFunc<T, M, N>::Gradient(const int step,
+                                        const State &x,
+                                        const Control &u,
+                                        Eigen::Ref<VecX> lx,
+                                        Eigen::Ref<VecU> lu) const {
     lx.setZero();
     lu.setZero();
     if (step > CostFunc<T, M, N>::horizon) {
         return false;
     }
+    lu(UIndex::W) = w_yaw_rate_ * u(UIndex::W);
     return true;
 }
 
@@ -85,7 +89,6 @@ bool YawRateCostFunc<T, M, N>::Hessian(const int step,
     return true;
 }
 
-template class YawRateCostFunc<double, 5, 1>;
 template class YawRateCostFunc<double, 4, 2>;
 
 template<typename T, unsigned M, unsigned int N>
@@ -241,7 +244,6 @@ bool CurvatureCostFunc<T, M, N>::Hessian(const int step,
 }
 
 template class CurvatureCostFunc<double, 5, 1>;
-template class CurvatureCostFunc<double, 4, 2>;
 
 template<typename T, unsigned M, unsigned int N>
 bool LateralComfortCostFunc<T, M, N>::Evaluate(const int step,
@@ -300,6 +302,5 @@ bool LateralComfortCostFunc<T, M, N>::Hessian(const int step,
 }
 
 template class LateralComfortCostFunc<double, 5, 1>;
-template class LateralComfortCostFunc<double, 4, 2>;
 
 //template class CurvatureFinalCostFunc<double, 4, 2>;
