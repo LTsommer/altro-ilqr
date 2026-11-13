@@ -33,7 +33,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include "frenet_coordinate/vec2d.h"
+#include "math/vec2d.h"
 
 // unnamed namespace only because the implementation is in this
 // header file, and we don't want to export symbols to the obj files

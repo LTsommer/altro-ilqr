@@ -36,8 +36,12 @@ add_library(altro_solver STATIC
         cost_function/cost_terms.cpp
         frenet_coordinate/cartesian_coordinate_system.cc
         frenet_coordinate/frenet_coordinate_system.cc
-        frenet_coordinate/spline.cc
-        frenet_coordinate/vec2d.cc
+        math/aabox2d.cc
+        math/box2d.cc
+        math/line_segment2d.cc
+        math/polygon2d.cc
+        math/spline.cc
+        math/vec2d.cc
         model/smooth_kappa_model.cc
         motion_planning/constraints/constraints.cpp
         motion_planning/cost_functions/cost_terms.cpp
@@ -47,13 +51,16 @@ target_link_libraries(altro_solver PUBLIC altro_solver_assembly)
 add_executable(alilqr main.cpp)
 add_executable(mp motion_planning.cpp)
 
+add_library(path_validation STATIC common/path_validation.cpp)
+target_link_libraries(path_validation PUBLIC altro_solver)
+
 foreach(solver_app IN ITEMS alilqr mp)
     set(default_config "${CMAKE_CURRENT_BINARY_DIR}/${solver_app}.conf")
     configure_file("config/${solver_app}.conf" "${default_config}" COPYONLY)
     target_sources(${solver_app} PRIVATE common/solver_cli.cpp)
     target_compile_definitions(${solver_app} PRIVATE
             ALTRO_DEFAULT_CONFIG="${default_config}")
-    target_link_libraries(${solver_app} PRIVATE altro_solver)
+    target_link_libraries(${solver_app} PRIVATE path_validation)
 endforeach()
 
 add_executable(test_constraint test_constraint.cpp)
@@ -67,7 +74,7 @@ target_link_libraries(test_projection PRIVATE projection_solver)
 add_executable(test_derivatives test_derivatives.cpp)
 target_link_libraries(test_derivatives PRIVATE altro_solver)
 
-foreach(target IN ITEMS projection_solver altro_solver_assembly altro_solver alilqr mp
+foreach(target IN ITEMS projection_solver altro_solver_assembly altro_solver path_validation alilqr mp
         test_constraint test_projection test_derivatives)
     target_compile_options(${target} PRIVATE
             $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall>
@@ -76,6 +83,15 @@ endforeach()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(test_box_polygon_conversion test_box_polygon_conversion.cpp)
+    target_link_libraries(test_box_polygon_conversion PRIVATE altro_solver)
+    add_test(NAME box-polygon-conversion COMMAND test_box_polygon_conversion)
+    add_executable(test_polygon_geometry test_polygon_geometry.cpp)
+    target_link_libraries(test_polygon_geometry PRIVATE altro_solver)
+    add_test(NAME polygon-geometry COMMAND test_polygon_geometry)
+    add_executable(test_path_validation test_path_validation.cpp)
+    target_link_libraries(test_path_validation PRIVATE path_validation)
+    add_test(NAME path-validation COMMAND test_path_validation)
     add_test(NAME constraints COMMAND test_constraint)
     add_test(NAME projection COMMAND test_projection)
     add_test(NAME derivatives COMMAND test_derivatives)

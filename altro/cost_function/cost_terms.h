@@ -6,7 +6,7 @@
 #define CILQR_COST_TERMS_H
 
 #include "cost_function/cost_function.hpp"
-#include "frenet_coordinate/vec2d.h"
+#include "math/vec2d.h"
 #include "frenet_coordinate/frenet_coordinate_system.h"
 #include "cost_function/cost_term_config.hpp"
 #include "constraint_definition/constraint_formulation.h"

@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "frenet_coordinate/cartesian_coordinate_system.h"
-#include "frenet_coordinate/types.h"
-#include "frenet_coordinate/spline.h"
-#include "frenet_coordinate/vec2d.h"
+#include "math/types.h"
+#include "math/spline.h"
+#include "math/vec2d.h"
 #include "common/math_utils.h"
 
 using std::vector;

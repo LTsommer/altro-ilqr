@@ -30,7 +30,8 @@ struct Quaternion {
     double w = 0.0;
 
     Quaternion() = default;
-    Quaternion(double xx, double yy, double zz, double ww) : x(xx), y(yy), z(zz), w(ww) {}
+    Quaternion(double xx, double yy, double zz, double ww)
+        : x(xx), y(yy), z(zz), w(ww) {}
 };
 
 struct Pose2D {

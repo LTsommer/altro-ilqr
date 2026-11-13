@@ -5,7 +5,7 @@
 #ifndef CILQR_CALCULUS_H
 #define CILQR_CALCULUS_H
 
-#include "frenet_coordinate/spline.h"
+#include "math/spline.h"
 #include "common/math_utils.h"
 #include <iostream>
 #include <type_traits>

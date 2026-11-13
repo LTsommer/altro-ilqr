@@ -7,7 +7,7 @@
 #include "ilqr_system_declaration.hpp"
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_terms.h"
-#include "frenet_coordinate/vec2d.h"
+#include "math/vec2d.h"
 #include "frenet_coordinate/frenet_coordinate_system.h"
 #include "augmented_ilqr/ocp_problem.hpp"
 #include "augmented_ilqr/alilqr_solver.h"

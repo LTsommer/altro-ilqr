@@ -5,7 +5,7 @@
 #include "augmented_ilqr/solver_term_registry.hpp"
 #include "common/math_utils.h"
 #include "frenet_coordinate/frenet_coordinate_system.h"
-#include "frenet_coordinate/vec2d.h"
+#include "math/vec2d.h"
 #include "model/smooth_kappa_model.h"
 #include "motion_planning/mix_model.h"
 

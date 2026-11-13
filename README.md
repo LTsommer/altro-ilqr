@@ -113,7 +113,8 @@ polishing 改成 Riccati 递推后，动力学严格满足、收敛快：曲率�
 │   ├── cost_function/                 # 代价接口、参数及具体代价项
 │   ├── constraint_definition/          # 约束抽象、乘子/罚因子状态与罚函数
 │   ├── basic_constraint/              # 曲率、航向、控制和边界安全约束
-│   ├── frenet_coordinate/             # 样条、Frenet/Cartesian 坐标变换
+│   ├── frenet_coordinate/             # Frenet/Cartesian 坐标变换
+│   ├── math/                          # 基础类型、样条和二维几何
 │   ├── calculus.h                     # Gauss–Legendre 数值积分
 │   ├── csv_writer.hpp                 # 把结果导出为 CSV
 │   ├── scripts/plot_results.py        # 读取 CSV 并画图
@@ -402,6 +403,8 @@ C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `
 两个示例分别使用 [alilqr.conf](altro/config/alilqr.conf) 和 [mp.conf](altro/config/mp.conf)。CMake 将默认配置复制到构建目录。从其他工作目录运行时，程序也从构建目录读取默认配置。
 
 调用方用各自的 `BuildScene()` 提供场景和参考数据，再调用 [BuildALTROSolver()](altro/build_altro_solver.hpp) 登记代价和约束、加载配置、组装 OCP、初始化 `x0/u0`，并返回配置好的求解器。调用方再调用 `Solve()`，根据求解状态处理结果和导出 CSV。
+
+求解后，Step 4 用场景的道路边界和静态障碍物校验输出路径。校验沿相邻 `x/y` 点连成的折线扫掠半径 1 m 的圆，触碰边界或障碍物也判为失败。失败时输出首个冲突的路径段和对象，Step 5 仍导出绘图 CSV，程序返回非零。`--summary` 会同时显示校验通过的信息。
 
 复制对应的默认配置，调整代价权重、求解上下限、各约束的初始 `dual` 和 `penalty`，或修改 `projection_method`。显式传入的第二个位置参数优先于文件中的投影后端。
 

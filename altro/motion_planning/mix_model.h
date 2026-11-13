@@ -9,7 +9,7 @@
 #include "ilqr_system_declaration.hpp"
 #include "common/calculus.h"
 #include "model/heading.h"
-#include "frenet_coordinate/spline.h"
+#include "math/spline.h"
 #include <array>
 #include <cmath>
 #include <limits>
