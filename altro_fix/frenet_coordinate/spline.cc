@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <new>
 
 #include <utility>
 #include <iostream>
@@ -14,6 +15,8 @@ using namespace Eigen;
 
 // band_matrix implementation
 // -------------------------
+
+band_matrix::band_matrix() : upper_(nullptr), lower_(nullptr), n_upper_(0), n_lower_(0), dim_(0) {}
 
 band_matrix::band_matrix(int dim, int n_u, int n_l) {
     init(dim, n_u, n_l);
@@ -67,6 +70,10 @@ double &band_matrix::saved_diag(int i) {
 }
 
 // LR-Decomposition of a band matrix
+int band_matrix::index(int i, int j) const {
+    return i * dim_ + j;
+}
+
 void band_matrix::lu_decompose() {
     int i_max, j_max;
     int j_min;
@@ -147,6 +154,39 @@ std::vector<double> band_matrix::lu_solve(const std::vector<double> &b, bool is_
 
 // spline implementation
 // -----------------------
+
+spline::spline()
+    : m_left(second_deriv),
+      m_right(second_deriv),
+      m_left_value(0.0),
+      m_right_value(0.0),
+      m_force_linear_extrapolation(false),
+      cached_inverse_(0) {
+    ;
+}
+
+spline::spline(spline &&rhs)
+    : m_x(std::move(rhs.m_x)),
+      m_y(std::move(rhs.m_y)),
+      m_a(std::move(rhs.m_a)),
+      m_b(std::move(rhs.m_b)),
+      m_c(std::move(rhs.m_c)),
+      m_b0(rhs.m_b0),
+      m_c0(rhs.m_c0),
+      m_left(rhs.m_left),
+      m_right(rhs.m_right),
+      m_left_value(rhs.m_left_value),
+      m_force_linear_extrapolation(rhs.m_force_linear_extrapolation),
+      cached_inverse_(rhs.cached_inverse_) {}
+
+spline &spline::operator=(spline &&rhs) {
+    if (this == &rhs) {
+        return *this;
+    }
+    this->~spline();
+    new (this) spline(std::move(rhs));
+    return *this;
+}
 
 void spline::set_boundary(spline::bd_type left,
                           double left_value,

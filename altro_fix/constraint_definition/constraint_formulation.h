@@ -64,7 +64,7 @@ public:
      * @param x The LHS in constraint x > 0
      * @param res d^2(f(x))/d^2x: the computed hessian
      */
-    void Hessian(const double &x, double &val) const override { val = 0; }
+    void Hessian(const double &x, double &val) const override;
 };
 
 /*
@@ -79,19 +79,19 @@ public:
      * @return the cost Evaluate f(x)
      */
 
-    double Evaluate(const double &x) const override { return x < kInequalityTol ? 0.0 : 0.5 * sqr(x); }
+    double Evaluate(const double &x) const override;
     /**
      * @param x The LHS in constraint x > 0
      *
      * @param res d(f(x))/dx: the computed gradient
      */
-    void Gradient(const double &x, double &val) const override { val = x < kInequalityTol ? 0.0 : x; }
+    void Gradient(const double &x, double &val) const override;
 
     /**
      * @param x The LHS in constraint x > 0
      * @param res d^2(f(x))/d^2x: the computed hessian
      */
-    void Hessian(const double &x, double &val) const override { val = x < kInequalityTol ? 0.0 : 1.0; }
+    void Hessian(const double &x, double &val) const override;
 };
 
 class OneSideEqualityCost final : ConstraintPenaltyCostFunc {
@@ -103,19 +103,19 @@ public:
      * @param x The LHS in constraint x = 0
      * @return the cost Evaluate f(x)
      */
-    double Evaluate(const double &x) const override { return std::fabs(x) < kEqualityTol ? 0.0 : x; };
+    double Evaluate(const double &x) const override;
 
     /**
      * @param x The LHS in constraint x = 0
      * @param res d(f(x))/dx: the computed gradient
      */
-    void Gradient(const double &x, double &val) const override { val = (std::fabs(x) < kEqualityTol) ? 0.0 : 1.0; };
+    void Gradient(const double &x, double &val) const override;
 
     /**
      * @param x The LHS in constraint x > 0
      * @param res d^2(f(x))/d^2x: the computed hessian
      */
-    void Hessian(const double &x, double &val) const override { val = 0.0; };
+    void Hessian(const double &x, double &val) const override;
 };
 
 // TODO: 抽象出一个constraint class用来处理形如 x_l <= x <= x_u 这一类的约束，

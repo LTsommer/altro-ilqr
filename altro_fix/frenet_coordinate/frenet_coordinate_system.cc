@@ -68,6 +68,64 @@ vector<double> polyfit(const vector<std::pair<double, double>> &array, int n) {
 }
 } // namespace
 
+void FrenetCoordinateSystemParameters::Init() {
+    zero_speed_threshold = 0.1;
+    coord_transform_precision = 1e-2;
+    step_s = 0.3;
+    coarse_step_s = 1.0;
+    optimization_gamma = 0.5;
+    max_iter = 15;
+}
+
+FrenetCoordinateSystem::FrenetCoordinateSystem() {}
+
+FrenetCoordinateSystem::~FrenetCoordinateSystem() {}
+
+double FrenetCoordinateSystem::GetRefCurveHeading(double s) const {
+    assert(s <= m_length && s >= 0);
+    return atan2(m_y_s.deriv<1>(s), m_x_s.deriv<1>(s));
+}
+
+Point2D FrenetCoordinateSystem::GetRefCurveUnitTangent(double s) const {
+    assert(s <= m_length && s >= 0);
+    const double dx = m_x_s.deriv<1>(s);
+    const double dy = m_y_s.deriv<1>(s);
+    const double norm_squared = dx * dx + dy * dy;
+    if (norm_squared >= std::numeric_limits<double>::min() && std::isfinite(norm_squared)) {
+        const double inverse_norm = 1.0 / std::sqrt(norm_squared);
+        return {dx * inverse_norm, dy * inverse_norm};
+    }
+    // Preserve the heading convention for degenerate or out-of-range derivatives.
+    const double heading = std::atan2(dy, dx);
+    return {std::cos(heading), std::sin(heading)};
+}
+
+double FrenetCoordinateSystem::GetRefCurveAvgHeading(double s, double delta_s) const {
+    assert(s <= m_length && s >= 0);
+    double real_delta = std::min<double>(m_length - s, delta_s);
+    if (real_delta > 0.1) {
+        return atan2(m_y_s.extrapolate(s + real_delta) - m_y_s.extrapolate(s),
+                     m_x_s.extrapolate(s + real_delta) - m_x_s.extrapolate(s));
+    } else {
+        return GetRefCurveHeading(s);
+    }
+}
+
+double FrenetCoordinateSystem::GetRefCurveCurvature(double s) const {
+    assert(s <= m_length && s >= 0);
+    return m_k_s.extrapolate(s);
+}
+
+double FrenetCoordinateSystem::GetRefCurveDCurvature(double s) const {
+    assert(s <= m_length && s >= 0);
+    return m_k_s.deriv<1>(s);
+}
+
+Point2D FrenetCoordinateSystem::GetRefCurvePoint(double s) const {
+    assert(s <= m_length && s >= 0);
+    return {m_x_s.extrapolate(s), m_y_s.extrapolate(s)};
+}
+
 FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
                                                spline &&x_s,
                                                spline &&y_s,

@@ -50,8 +50,8 @@ private:
     void operator=(const band_matrix &) = delete;
 
 public:
-    band_matrix() : upper_(nullptr), lower_(nullptr), n_upper_(0), n_lower_(0), dim_(0) {} // constructor
-    band_matrix(int dim, int n_u, int n_l);                                                // constructor
+    band_matrix();                          // constructor
+    band_matrix(int dim, int n_u, int n_l); // constructor
     ~band_matrix();
     void init(int dim, int n_u, int n_l);      // init with dim,n_u,n_l
     int dim() const { return dim_; };          // matrix dimensio n
@@ -64,7 +64,7 @@ public:
     double &saved_diag(int i);
     double saved_diag(int i) const;
     void lu_decompose();
-    int index(int i, int j) const { return i * dim_ + j; }
+    int index(int i, int j) const;
     std::vector<double> r_solve(const std::vector<double> &b) const;
     std::vector<double> l_solve(const std::vector<double> &b) const;
     std::vector<double> lu_solve(const std::vector<double> &b, bool is_lu_decomposed = false);
@@ -96,39 +96,12 @@ private:
 
 public:
     // set default boundary condition to be zero curvature at both ends
-    spline()
-        : m_left(second_deriv),
-          m_right(second_deriv),
-          m_left_value(0.0),
-          m_right_value(0.0),
-          m_force_linear_extrapolation(false),
-          cached_inverse_(0) {
-        ;
-    }
+    spline();
 
     spline(const spline &) = delete;
     void operator=(const spline &) = delete;
-    spline(spline &&rhs)
-        : m_x(std::move(rhs.m_x)),
-          m_y(std::move(rhs.m_y)),
-          m_a(std::move(rhs.m_a)),
-          m_b(std::move(rhs.m_b)),
-          m_c(std::move(rhs.m_c)),
-          m_b0(rhs.m_b0),
-          m_c0(rhs.m_c0),
-          m_left(rhs.m_left),
-          m_right(rhs.m_right),
-          m_left_value(rhs.m_left_value),
-          m_force_linear_extrapolation(rhs.m_force_linear_extrapolation),
-          cached_inverse_(rhs.cached_inverse_) {}
-    spline &operator=(spline &&rhs) {
-        if (this == &rhs) {
-            return *this;
-        }
-        this->~spline();
-        new (this) spline(std::move(rhs));
-        return *this;
-    }
+    spline(spline &&rhs);
+    spline &operator=(spline &&rhs);
 
     // optional, but if called it has to come be before set_points()
     void set_boundary(bd_type left,
