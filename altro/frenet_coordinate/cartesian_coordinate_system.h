@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-#include "frenet_coordinate/types.h"
+#include "math/types.h"
 
 const double PI = 3.1415926535;
 

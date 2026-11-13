@@ -7,10 +7,11 @@
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_terms.h"
 #include "csv_writer.hpp"
-#include "frenet_coordinate/vec2d.h"
+#include "math/vec2d.h"
 #include "frenet_coordinate/frenet_coordinate_system.h"
 #include "basic_constraint/basic_constraint.hpp"
 #include "build_altro_solver.hpp"
+#include "common/path_validation.hpp"
 #include "common/solver_cli.hpp"
 #include <iostream>
 #include <typeindex>
@@ -36,6 +37,7 @@ void vector_norm(vector<double> &rx) {
 
 struct Scene {
     CostTermConfig config{};
+    altro::PathSceneGeometry geometry;
     std::unique_ptr<FrenetCoordinateSystem> fcs;
     altro::CurvatureStart start;
     double ref_vel_min, ref_vel_max, ref_lat_acc;
@@ -129,9 +131,11 @@ Scene BuildScene() {
     double min_safe_buffer = 0.1;
     vector<double> lb_x, lb_y, rb_x, rb_y;
     vector<vector<Vector2d>> p_bounds;
+    vector<altro::RoadBoundarySample> boundary_samples;
     // One entry per reference point (ds / dt / acceleration have one fewer).
     p_ref.reserve(rx.size());
     p_bounds.reserve(rx.size());
+    boundary_samples.reserve(rx.size());
     left_safe_dist.reserve(rx.size());
     right_safe_dist.reserve(rx.size());
     left_comfort_dist.reserve(rx.size());
@@ -156,35 +160,14 @@ Scene BuildScene() {
         double v = std::min(vel_max, std::max(std::sqrt(acc_max / k), vel_min));
         double s_front = std::max(frenet_pt.x() - buffer_dis, 0.0);
         double s_back = std::min(frenet_pt.x() + buffer_dis, fcs->GetSlength());
-        vector<Vec2d> bound_points;
-        if (i >= 5 and i <= 8) {
-            Vec2d left_lane_boundary_1(s_front, lane_width - 1.2);
-            Vec2d left_lane_boundary_2(s_back, lane_width - 1.2);
-            Vec2d right_lane_boundary_1(s_front, -lane_width);
-            Vec2d right_lane_boundary_2(s_back, -lane_width);
-            bound_points = vector<Vec2d>{left_lane_boundary_1,
-                                         left_lane_boundary_2,
-                                         right_lane_boundary_1,
-                                         right_lane_boundary_2};
-        } else if (i >= 15 and i <= 18) {
-            Vec2d left_lane_boundary_1(s_front, lane_width);
-            Vec2d left_lane_boundary_2(s_back, lane_width);
-            Vec2d right_lane_boundary_1(s_front, -lane_width);
-            Vec2d right_lane_boundary_2(s_back, -lane_width);
-            bound_points = vector<Vec2d>{left_lane_boundary_1,
-                                         left_lane_boundary_2,
-                                         right_lane_boundary_1,
-                                         right_lane_boundary_2};
-        } else {
-            Vec2d left_lane_boundary_1(s_front, lane_width);
-            Vec2d left_lane_boundary_2(s_back, lane_width);
-            Vec2d right_lane_boundary_1(s_front, -lane_width);
-            Vec2d right_lane_boundary_2(s_back, -lane_width);
-            bound_points = vector<Vec2d>{left_lane_boundary_1,
-                                         left_lane_boundary_2,
-                                         right_lane_boundary_1,
-                                         right_lane_boundary_2};
-        }
+        const double left_offset =
+                i >= 5 && i <= 8 ? lane_width - 1.2 : lane_width;
+        const double right_offset = -lane_width;
+        boundary_samples.push_back({s_front, left_offset, right_offset});
+        const vector<Vec2d> bound_points{{s_front, left_offset},
+                                         {s_back, left_offset},
+                                         {s_front, right_offset},
+                                         {s_back, right_offset}};
 
         vector<Vector2d> p_bound;
         p_bound.reserve(bound_points.size());
@@ -284,6 +267,8 @@ Scene BuildScene() {
     config.ref_y = std::move(ry);
     config.type_names = std::move(type_names);
 
+    scene.geometry = altro::BuildPathSceneGeometry(
+            *fcs, lane_width, half_veh_width, boundary_samples);
     scene.fcs = std::move(fcs);
     scene.start = {
             Vec2d(config.ref_x.front(), config.ref_y.front()), kappa_, dkappa_};
@@ -386,7 +371,11 @@ int main(int argc, char **argv) {
     Controls u_res_seq;
     const auto projection_status = solver->Solve(x0, u0, x_res_seq, u_res_seq);
 
-    // 4. Export the results for plotting.
+    // 4. Validate the solved path against the scene geometry.
+    const bool path_valid = altro::ValidateSolvedPath(
+            scene.geometry, x_res_seq, options->solver.print_summary);
+
+    // 5. Export the results for plotting.
     const bool projection_incomplete =
             altro::ProjectionIncomplete(projection_status);
     ExportResults(options->output_dir,
@@ -394,5 +383,5 @@ int main(int argc, char **argv) {
                   x_res_seq,
                   u_res_seq,
                   projection_incomplete);
-    return projection_incomplete ? 1 : 0;
+    return path_valid && !projection_incomplete ? 0 : 1;
 }

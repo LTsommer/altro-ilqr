@@ -1,4 +1,4 @@
-#include "frenet_coordinate/spline.h"
+#include "math/spline.h"
 
 #include <cstdlib>
 #include <cstring>
