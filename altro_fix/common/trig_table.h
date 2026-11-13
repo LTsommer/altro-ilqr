@@ -1,5 +1,5 @@
 //
-// sin / cos without calling std::sin / std::cos at run time.
+// Fast sin / cos for bounded angles.
 //
 
 #ifndef CILQR_TRIG_TABLE_H
@@ -14,12 +14,11 @@
 //   python3 -c "import math; N=4096; print([math.sin(2 * math.pi * k / N) for k in range(N)])"
 //   python3 -c "import math; N=4096; print([math.cos(2 * math.pi * k / N) for k in range(N)])"
 //
-// SinCos splits x = k * kStep + d with |d| <= kStep / 2 and uses the angle-addition formula
+// The lookup splits x = k * kStep + d with |d| <= kStep / 2 and uses the angle-addition formula
 // sin(x) = sin(k kStep) cos(d) + cos(k kStep) sin(d), cos(x) = cos(k kStep) cos(d) - sin(k kStep) sin(d),
 // with sin(d) ~ d - d^3 / 6 and cos(d) ~ 1 - d^2 / 2 + d^4 / 24 (truncation error below 1e-17).
-// The remaining error comes from the range reduction and grows with |x|, about |x| * 1e-16, so
-// SinCos is defined for finite |x| <= kMaxTableAngle only (error below 4e-14 there); outside that
-// range the index conversion would overflow.
+// The remaining error comes from the range reduction and grows with |x|, about |x| * 1e-16.
+// The table path is limited to |x| <= kMaxTableAngle (error below 4e-14 there).
 namespace trig_table {
 inline constexpr int kSize = 4096; // samples per turn, power of two so the index wraps with a mask
 inline constexpr double kTwoPi = 6.283185307179586;
@@ -27,6 +26,7 @@ inline constexpr double kStep = kTwoPi / kSize;
 inline constexpr double kInvStep = kSize / kTwoPi;
 inline constexpr double kMaxTableAngle = 256.0; // rad
 
+// clang-format off
 inline constexpr std::array<double, kSize> kSinTable{
         0.0, 0.0015339801862847655, 0.003067956762965976, 0.0046019261204485705,
         0.006135884649154475, 0.007669828739531097, 0.00920375478205982, 0.01073765916726449,
@@ -2081,10 +2081,13 @@ inline constexpr std::array<double, kSize> kCosTable{
         0.9999811752826011, 0.9999894110819284, 0.9999952938095762, 0.9999988234517019,
 };
 
-// Precondition: x is finite and |x| <= kMaxTableAngle. Callers guarantee it (the solvers only pass
-// finite states to the model); a violation is a bug upstream, not something to work around here.
-inline void SinCos(const double x, double *sin_x, double *cos_x) {
-    assert(std::abs(x) <= kMaxTableAngle && "SinCos: angle must be finite and within kMaxTableAngle");
+// clang-format on
+
+namespace detail {
+
+template<bool kSine>
+inline double LookupValue(double x) {
+    assert(std::abs(x) <= kMaxTableAngle && "Trig lookup requires a finite angle within the table range");
     const double turns = x * kInvStep;
     const double k = std::floor(turns + 0.5);
     const double d = (turns - k) * kStep;
@@ -2094,9 +2097,24 @@ inline void SinCos(const double x, double *sin_x, double *cos_x) {
     const double d2 = d * d;
     const double sin_d = d * (1.0 - d2 / 6.0);
     const double cos_d = 1.0 - d2 / 2.0 * (1.0 - d2 / 12.0);
-    *sin_x = sin_k * cos_d + cos_k * sin_d;
-    *cos_x = cos_k * cos_d - sin_k * sin_d;
+    if constexpr (kSine) {
+        return sin_k * cos_d + cos_k * sin_d;
+    } else {
+        return cos_k * cos_d - sin_k * sin_d;
+    }
 }
+
+} // namespace detail
+
+// The angle must be finite and within [-kMaxTableAngle, kMaxTableAngle].
+inline double SinValue(double x) {
+    return detail::LookupValue<true>(x);
+}
+
+inline double CosValue(double x) {
+    return detail::LookupValue<false>(x);
+}
+
 } // namespace trig_table
 
 #endif // CILQR_TRIG_TABLE_H

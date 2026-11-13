@@ -18,8 +18,9 @@ void ALILQRSolver<T, M, N>::Solve(const State &x0, const Controls &u0, States &x
             std::make_unique<ILQRSolverState<T, M, N>>(step_sizes().size());
     // Everything after this works on the initial trajectory; if its rollout is not finite (NaN /
     // inf in x0, u0 or the resulting states / cost) there is nothing valid to return.
-    if (!std::isfinite(InitTraj(x0, u0, ilqr_state.get()))) {
-        throw std::runtime_error("ALILQRSolver: the rollout of the initial guess is not finite");
+    const State initial_state = Problem().GetModel()->PrepareInitialState(x0);
+    if (!std::isfinite(InitTraj(initial_state, u0, ilqr_state.get()))) {
+        throw std::runtime_error("ALILQRSolver: initial rollout is not finite or violates the model input range");
     }
     GenerateTrajectory(ilqr_state.get());
     x_res_seq = ilqr_state->x_seq_;
@@ -351,6 +352,7 @@ bool ALILQRSolver<T, M, N>::ForwardProcess(const States &x_old,
 template<typename T, unsigned int M, unsigned int N>
 double ALILQRSolver<T, M, N>::RollOut(const State &x0, const Controls &u, ILQRSolverState<T, M, N> *ilqr_state) const {
     double total_cost = 0;
+    const auto &model = Problem().GetModel();
 
     State x_curr = x0;
     Control u_curr;
@@ -362,7 +364,7 @@ double ALILQRSolver<T, M, N>::RollOut(const State &x0, const Controls &u, ILQRSo
         u_curr = u[t];
         if (ilqr_state->K_.size() > 0) {
             // apply LQR control gains after first iteration
-            u_curr += ilqr_state->K_[t] * (x_new[t] - ilqr_state->x_seq_[t]);
+            u_curr += ilqr_state->K_[t] * model->StateDifference(x_new[t], ilqr_state->x_seq_[t]);
         }
         // The model is only defined for finite inputs: stop here and report the rollout as
         // invalid (infinite cost) instead of passing NaN / inf on.
@@ -372,7 +374,7 @@ double ALILQRSolver<T, M, N>::RollOut(const State &x0, const Controls &u, ILQRSo
 
         ilqr_state->u_seq_[t] = u_curr; // no clamping since no control limit
         total_cost += Problem().Evaluate(t, x_curr, u_curr);
-        x_curr = Problem().GetModel()->ForwardCalculation(x_curr, u_curr, step_sizes_[t]);
+        x_curr = model->ForwardCalculation(x_curr, u_curr, step_sizes_[t]);
         x_new[t + 1] = x_curr;
     }
 

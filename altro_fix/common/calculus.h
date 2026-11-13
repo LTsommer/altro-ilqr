@@ -6,7 +6,7 @@
 #define CILQR_CALCULUS_H
 
 #include "../frenet_coordinate/spline.h"
-#include "trig_table.h"
+#include "math_utils.h"
 #include <iostream>
 #include <type_traits>
 #include <vector>
@@ -20,54 +20,58 @@ using Eigen::Matrix;
 namespace gauss_legendre {
 inline constexpr int kNumNodes = 10;
 inline constexpr std::array<double, kNumNodes> kNodes{
-        -0.9739065285171717, -0.8650633666889845,
-        -0.6794095682990244, -0.4333953941292472,
-        -0.1488743389816312, 0.1488743389816312,
-        0.4333953941292472, 0.6794095682990244,
-        0.8650633666889845, 0.9739065285171717,
+        -0.9739065285171717,
+        -0.8650633666889845,
+        -0.6794095682990244,
+        -0.4333953941292472,
+        -0.1488743389816312,
+        0.1488743389816312,
+        0.4333953941292472,
+        0.6794095682990244,
+        0.8650633666889845,
+        0.9739065285171717,
 };
 inline constexpr std::array<double, kNumNodes> kWeights{
-        0.0666713443086881, 0.1494513491505806,
-        0.2190863625159820, 0.2692667193099963,
-        0.2955242247147529, 0.2955242247147529,
-        0.2692667193099963, 0.2190863625159820,
-        0.1494513491505806, 0.0666713443086881,
+        0.0666713443086881,
+        0.1494513491505806,
+        0.2190863625159820,
+        0.2692667193099963,
+        0.2955242247147529,
+        0.2955242247147529,
+        0.2692667193099963,
+        0.2190863625159820,
+        0.1494513491505806,
+        0.0666713443086881,
 };
 } // namespace gauss_legendre
 
-// Displacement over one step of length dt with theta and velocity linear between the two ends.
-// Pairs the symmetric quadrature nodes in the frame of the midpoint heading.
-// Preconditions (guaranteed by the solver): dt > 0 and all inputs finite.
+// Displacement with linear heading and speed over a step. The model supplies a principal
+// start heading and the validated physical turn, including any crossing of the angle boundary.
 inline Eigen::Vector2d IntegratePlanarPosition(
-        double theta0, double theta1, double velocity0, double velocity1, double dt) {
-    const double half_dt = dt / 2.0;
-    const double half_theta_change = ((theta1 - theta0) / dt) * half_dt;
-    const double half_velocity_change = ((velocity1 - velocity0) / dt) * half_dt;
-    const double mid_heading = theta0 + half_theta_change;
+        double theta0, double heading_change, double velocity0, double velocity1, double dt) {
+    const double half_theta_change = 0.5 * heading_change;
+    const double half_velocity_change = 0.5 * (velocity1 - velocity0);
+    const double mid_heading = NormalizeAngle(theta0 + half_theta_change);
     const double mid_velocity = velocity0 + half_velocity_change;
+    const double sin_heading = trig_table::SinValue(mid_heading);
+    const double cos_heading = trig_table::CosValue(mid_heading);
     double weighted_cos = 0.0;
     double weighted_node_sin = 0.0;
     for (int i = gauss_legendre::kNumNodes / 2; i < gauss_legendre::kNumNodes; ++i) {
         const double node = gauss_legendre::kNodes[i];
-        const double angle = node * half_theta_change;
+        const double angle = NormalizeAngle(node * half_theta_change);
         const double weight = gauss_legendre::kWeights[i];
-        double sin_angle, cos_angle;
-        trig_table::SinCos(angle, &sin_angle, &cos_angle);
-        weighted_cos += weight * cos_angle;
-        weighted_node_sin += weight * node * sin_angle;
+        weighted_cos += weight * trig_table::CosValue(angle);
+        weighted_node_sin += weight * node * trig_table::SinValue(angle);
     }
     // Even terms use the sum of the paired velocities, odd terms use their difference.
     const double longitudinal = dt * mid_velocity * weighted_cos;
     const double lateral = dt * half_velocity_change * weighted_node_sin;
-    double sin_heading, cos_heading;
-    trig_table::SinCos(mid_heading, &sin_heading, &cos_heading);
-    return {cos_heading * longitudinal - sin_heading * lateral,
-            sin_heading * longitudinal + cos_heading * lateral};
+    return {cos_heading * longitudinal - sin_heading * lateral, sin_heading * longitudinal + cos_heading * lateral};
 }
 
-// Partials of the IntegratePlanarPosition displacement w.r.t. its end values (theta and
-// velocity linear between the two ends, same 10-point Gauss-Legendre rule). Same preconditions
-// as IntegratePlanarPosition.
+// Partials w.r.t. the two local endpoint headings and speeds. The physical turn is used
+// to evaluate node headings, while the interpolation weights give the endpoint derivatives.
 struct PlanarPositionPartials {
     enum Index {
         kTheta0 = 0,
@@ -80,7 +84,7 @@ struct PlanarPositionPartials {
 };
 
 inline PlanarPositionPartials IntegratePlanarPositionPartials(
-        double theta0, double theta1, double velocity0, double velocity1, double dt) {
+        double theta0, double heading_change, double velocity0, double velocity1, double dt) {
     constexpr int kNum = gauss_legendre::kNumNodes;
     using NodeArray = Eigen::Array<double, kNum, 1>;
     const Eigen::Map<const NodeArray> nodes(gauss_legendre::kNodes.data());
@@ -92,11 +96,13 @@ inline PlanarPositionPartials IntegratePlanarPositionPartials(
     end_weights.col(0) = (1.0 - end_weights.col(1).array()).matrix();
 
     const NodeArray s = end_weights.col(1).array();
-    const NodeArray theta = theta0 + (theta1 - theta0) * s;
+    const NodeArray theta = theta0 + heading_change * s;
     const NodeArray velocity = velocity0 + (velocity1 - velocity0) * s;
     NodeArray sin_theta, cos_theta;
     for (int i = 0; i < kNum; ++i) {
-        trig_table::SinCos(theta(i), &sin_theta(i), &cos_theta(i));
+        const double angle = NormalizeAngle(theta(i));
+        sin_theta(i) = trig_table::SinValue(angle);
+        cos_theta(i) = trig_table::CosValue(angle);
     }
     const NodeArray w = 0.5 * dt * weights;
 

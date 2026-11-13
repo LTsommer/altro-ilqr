@@ -12,10 +12,46 @@
 #include <iostream>
 #include <algorithm>
 #include <cassert>
+#include <string_view>
 #include <vector>
 
 using std::cout;
 using std::endl;
+
+namespace altro {
+
+enum class ProjectionStatus {
+    Skipped,
+    Converged,
+    BackendFailed,
+    NoImprovingStep,
+    Stalled,
+    IterationLimit,
+};
+
+inline constexpr bool ProjectionIncomplete(ProjectionStatus status) {
+    return status != ProjectionStatus::Skipped && status != ProjectionStatus::Converged;
+}
+
+inline constexpr std::string_view ProjectionStatusName(ProjectionStatus status) {
+    switch (status) {
+        case ProjectionStatus::Skipped:
+            return "skipped";
+        case ProjectionStatus::Converged:
+            return "converged";
+        case ProjectionStatus::BackendFailed:
+            return "backend failed";
+        case ProjectionStatus::NoImprovingStep:
+            return "no improving step";
+        case ProjectionStatus::Stalled:
+            return "stalled";
+        case ProjectionStatus::IterationLimit:
+            return "iteration limit";
+    }
+    return "unknown";
+}
+
+} // namespace altro
 
 enum class JacSize {
     None,
@@ -64,7 +100,8 @@ public:
 
     virtual ~ALTROSolver() = default;
 
-    void Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq) {
+    // The outputs hold the last accepted trajectory, including when polishing stops short.
+    altro::ProjectionStatus Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq) {
         // The AL-iLQR summary is printed below, after both clocks have stopped.
         solver_->SetPrintSummary(false);
         StopWatch timer;
@@ -79,7 +116,8 @@ public:
         // onto the linearized constraints can change it a lot and raise the cost, so it only
         // runs once AL-iLQR is close.
         const bool project = alilqr_violation < projection_trigger_;
-        const int proj_steps = project ? ProjectTrajectory(alilqr_x, alilqr_u) : 0;
+        const auto projection =
+                project ? ProjectTrajectory(alilqr_x, alilqr_u) : ProjectionResult{altro::ProjectionStatus::Skipped, 0};
         const double proj_ms = proj_timer.elapsed_microseconds() / 1.0e3;
         x_res_seq = alilqr_x;
         u_res_seq = alilqr_u;
@@ -94,10 +132,11 @@ public:
         cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
         if (project) {
             cout << "ALTRO projection method : " << altro::ProjectionMethodName(projection_method_) << "\n";
-            cout << "ALTRO projection : " << proj_steps << " steps, " << proj_ms << " ms\n";
+            cout << "ALTRO projection : " << projection.accepted_steps << " steps, " << proj_ms << " ms\n";
         } else {
             cout << "ALTRO projection skipped: AL-iLQR violation above " << projection_trigger_ << "\n";
         }
+        cout << "ALTRO projection status : " << altro::ProjectionStatusName(projection.status) << "\n";
         cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
         for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
             cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
@@ -107,6 +146,7 @@ public:
         }
         cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
         cout << "altro solver consumes : " << total_ms << " ms\n";
+        return projection.status;
     }
 
     void SetVerbose(const bool verbose) { solver_->SetVerbose(verbose); }
@@ -276,7 +316,7 @@ private:
         double v = 0.0;
         for (int t = 0; t < steps_num_; ++t) {
             v = std::max(v,
-                         (x[t + 1] - model->ForwardCalculation(x[t], u[t], step_sizes_[t]))
+                         model->StateDifference(x[t + 1], model->ForwardCalculation(x[t], u[t], step_sizes_[t]))
                                  .template lpNorm<Eigen::Infinity>());
         }
         return v;
@@ -372,7 +412,7 @@ private:
             if (K.empty()) {
                 u_new[t] = u[t] + alpha * k[t];
             } else {
-                u_new[t] = u[t] + alpha * k[t] + K[t] * (x_new[t] - x[t]);
+                u_new[t] = u[t] + alpha * k[t] + K[t] * model->StateDifference(x_new[t], x[t]);
             }
             if (!x_new[t].allFinite() or !u_new[t].allFinite()) {
                 return false;
@@ -382,8 +422,13 @@ private:
         return x_new[steps_num_].allFinite();
     }
 
-    // Returns the number of accepted steps.
-    int ProjectTrajectory(States &x, Controls &u) const {
+    struct ProjectionResult {
+        altro::ProjectionStatus status;
+        int accepted_steps;
+    };
+
+    ProjectionResult ProjectTrajectory(States &x, Controls &u) const {
+        using altro::ProjectionStatus;
         // Start from a dynamically consistent trajectory (AL-iLQR already gives one; this only
         // removes round-off) so both methods can use zero dynamics residuals.
         {
@@ -410,7 +455,7 @@ private:
                 cout << "ALTRO projection iter " << iter << ": max violation = " << v << "\n";
             }
             if (v < kTol) {
-                break;
+                return {ProjectionStatus::Converged, accepted_steps};
             }
             // Conflicting rows: the steps converge to a least-squares compromise and stop
             // making progress.
@@ -418,7 +463,7 @@ private:
                 if (solver_->Verbose()) {
                     cout << "ALTRO projection: violation stalled, stop\n";
                 }
-                break;
+                return {ProjectionStatus::Stalled, accepted_steps};
             }
             v_prev = v;
 
@@ -429,9 +474,11 @@ private:
                         {model->JacobianX(x[t], u[t], step_sizes_[t]), model->JacobianU(x[t], u[t], step_sizes_[t])});
             }
             bool accepted = false;
+            bool backend_solved = false;
             for (int tries = 0; tries < kMaxDampingTries and !accepted; ++tries) {
                 altro::ProjectionStep<T, M, N> step;
                 if (altro::SolveProjection(projection_method_, dynamics, BuildStageQuadratics(h, rows, delta), step)) {
+                    backend_solved = true;
                     // Backtracking on the max constraint violation.
                     double alpha = 1.0;
                     for (int ls = 0; ls < kMaxProjectionLineSearch; ++ls) {
@@ -455,14 +502,14 @@ private:
                 delta = accepted ? std::max(delta / 10.0, kDampingMin) : delta * 100.0;
             }
             if (!accepted) {
-                if (solver_->Verbose()) {
-                    cout << "ALTRO projection: no improving step found, stop\n";
-                }
-                break;
+                return {backend_solved ? ProjectionStatus::NoImprovingStep : ProjectionStatus::BackendFailed,
+                        accepted_steps};
             }
             ++accepted_steps;
         }
-        return accepted_steps;
+        // The final accepted step may have reached tolerance at the iteration limit.
+        return {MaxConstraintViolation(x, u) < kTol ? ProjectionStatus::Converged : ProjectionStatus::IterationLimit,
+                accepted_steps};
     }
 
     const double GetMaxViolation() const { return solver_->Problem().GetCostUnionPtr()->GetMaxViolation(); }

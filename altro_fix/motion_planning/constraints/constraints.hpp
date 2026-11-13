@@ -433,27 +433,13 @@ class HeadingDiffLimitsConstraint final : public Constraint<double, 6, 2, Inequa
 public:
     HeadingDiffLimitsConstraint(const CostTermConfig &config, const bool is_lb) {
         horizon_ = config.steps.size();
-        int sign = is_lb ? 1 : -1;
-        const vector<double> &ref_yaw = config.yaw;
-        int steps = config.yaw.size();
-        a_ = is_lb ? -1 : 1;
-        b_.resize(steps);
-        for (int i = 0; i < steps; ++i) {
-            double diff_yaw = is_lb ? config.yaw_diff_min : -config.yaw_diff_max;
-            b_[i] = sign * ref_yaw[i] + diff_yaw;
-        }
+        UpdateConfig(config, is_lb);
     }
 
     void UpdateConfig(const CostTermConfig &config, const bool is_lb) {
-        int sign = is_lb ? 1 : -1;
-        const vector<double> &ref_yaw = config.yaw;
-        int steps = config.yaw.size();
         a_ = is_lb ? -1 : 1;
-        b_.resize(steps);
-        for (int i = 0; i < steps; ++i) {
-            double diff_yaw = is_lb ? config.yaw_diff_min : -config.yaw_diff_max;
-            b_[i] = sign * ref_yaw[i] + diff_yaw;
-        }
+        offset_ = is_lb ? config.yaw_diff_min : -config.yaw_diff_max;
+        yaw_ = config.yaw;
     }
 
     std::type_index GetTypeIndex() const override { return std::type_index(typeid(HeadingDiffLimitsConstraint)); }
@@ -465,7 +451,7 @@ public:
             cost_val = 0.0;
             return false;
         }
-        cost_val = a_ * x(mTheta) + b_[step];
+        cost_val = a_ * AngleDifference(x(mTheta), yaw_[step]) + offset_;
         return true;
     }
 
@@ -497,7 +483,8 @@ public:
 
 private:
     int a_;
-    vector<double> b_;
+    double offset_;
+    vector<double> yaw_;
 };
 
 /*----------- Constraint Penalty Functions Definitions-----------*/

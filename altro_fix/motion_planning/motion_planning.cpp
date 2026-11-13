@@ -546,22 +546,25 @@ int main(int argc, char **argv) {
         const double k_speed = kInitSpeedGain;
         auto clamp = [](double v, double lo, double hi) { return std::min(hi, std::max(lo, v)); };
         MixModel model;
-        State x = x0;
+        State x = model.PrepareInitialState(x0);
         for (int t = 0; t < static_cast<int>(dt.size()); ++t) {
             Vec2d sl;
             (void)fcs->CartCoord2FrenetCoord(Vec2d(x(mXPos), x(mYPos)), sl);
             const double s_next = std::min(sl.x() + std::max(x(mVel), 0.0) * dt[t], fcs->GetSlength());
             const double kappa_ref = fcs->GetRefCurveCurvature(s_next);
-            const double heading_err = x(mTheta) - fcs->GetRefCurveHeading(sl.x());
-            const double kappa_cmd = clamp(kappa_ref - k_lat * sl.y() - k_heading * NormalizeAngle(heading_err),
-                                           config.kappa_min,
-                                           config.kappa_max);
+            const double heading_err = AngleDifference(x(mTheta), fcs->GetRefCurveHeading(sl.x()));
+            const double kappa_cmd =
+                    clamp(kappa_ref - k_lat * sl.y() - k_heading * heading_err, config.kappa_min, config.kappa_max);
             double v_ref = config.velocity[std::min(t + 1, static_cast<int>(config.velocity.size()) - 1)];
             v_ref = std::min(v_ref, std::sqrt(config.lat_acc_max / std::max(std::fabs(kappa_ref), 1e-6)));
             const double acc_cmd = clamp(k_speed * (v_ref - x(mVel)), config.acc_min, config.acc_max);
             u0[t](mDotKappa) = (kappa_cmd - x(mKappa)) / dt[t];
             u0[t](mJerk) = clamp((acc_cmd - x(mAcc)) / dt[t], config.jerk_min, config.jerk_max);
             x = model.ForwardCalculation(x, u0[t], dt[t]);
+            if (!x.allFinite()) {
+                std::cerr << "Invalid motion-planning initial guess at step " << t << '\n';
+                return 1;
+            }
         }
     }
     States x_res_seq;
@@ -573,7 +576,7 @@ int main(int argc, char **argv) {
     if (projection_method) {
         altro_solver->SetProjectionMethod(*projection_method);
     }
-    altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
+    const auto projection_status = altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_v, ilqr_a, ilqr_j;
     ilqr_x.reserve(x_res_seq.size());
     ilqr_y.reserve(x_res_seq.size());
@@ -607,6 +610,10 @@ int main(int argc, char **argv) {
     });
 
     // Export the result; plot it with scripts/plot_results.py.
+    const bool projection_incomplete = altro::ProjectionIncomplete(projection_status);
+    if (projection_incomplete) {
+        std::cerr << "ALTRO projection did not reach tolerance. Exporting the approximate result.\n";
+    }
     WriteCsv(output_dir + "/mp_trajectory.csv",
              {{"t", T},
               {"ref_yaw", yaw},
@@ -627,5 +634,5 @@ int main(int argc, char **argv) {
               {"right_x", rb_x},
               {"right_y", rb_y}});
     //
-    return 0;
+    return projection_incomplete ? 1 : 0;
 }

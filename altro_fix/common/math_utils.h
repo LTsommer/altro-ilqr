@@ -39,10 +39,19 @@ __attribute__((always_inline)) inline double cross_prod(const T &w, const T &v) 
     return (w(0) * v(1) - w(1) * v(0));
 }
 
-// Wraps an angle to [-pi, pi] by exact remainder (no sin / cos). -pi and pi are returned as they
-// are, the same as atan2(sin(angle), cos(angle)) with the standard library.
+inline constexpr double kPi = trig_table::kTwoPi / 2.0;
+
+// Wraps an angle in the caller's supported numeric range to [-pi, pi).
 inline double NormalizeAngle(const double angle) {
-    return std::remainder(angle, trig_table::kTwoPi);
+    if (angle >= -kPi && angle < kPi) {
+        return angle;
+    }
+    const double principal = std::remainder(angle, trig_table::kTwoPi);
+    return principal == kPi ? -kPi : principal;
+}
+
+inline double AngleDifference(double angle, double reference) {
+    return NormalizeAngle(angle - reference);
 }
 
 // Piecewise-linear interpolation of (xs, ys) at x, held constant beyond the ends. xs must be
