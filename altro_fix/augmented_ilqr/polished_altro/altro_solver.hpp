@@ -30,10 +30,12 @@ enum class ProjectionStatus {
 };
 
 inline constexpr bool ProjectionIncomplete(ProjectionStatus status) {
-    return status != ProjectionStatus::Skipped && status != ProjectionStatus::Converged;
+    return status != ProjectionStatus::Skipped &&
+           status != ProjectionStatus::Converged;
 }
 
-inline constexpr std::string_view ProjectionStatusName(ProjectionStatus status) {
+inline constexpr std::string_view ProjectionStatusName(
+        ProjectionStatus status) {
     switch (status) {
         case ProjectionStatus::Skipped:
             return "skipped";
@@ -81,7 +83,8 @@ class ALTROSolver {
 public:
     using CostUnionType = CostUnion<T, M, N>;
     template<class ConsType>
-    using ConstraintValues = typename CostUnionType::template ConstraintValues<ConsType>;
+    using ConstraintValues =
+            typename CostUnionType::template ConstraintValues<ConsType>;
     constexpr static double kDefaultConstraintEpsilon = 1.0e-3;
     constexpr static double kDefaultProjectionTrigger = 0.1;
     constexpr static double kTol = 1.0e-6;
@@ -92,18 +95,23 @@ public:
 
 public:
     OCP_VARIABLES(T, M, N)
-    explicit ALTROSolver(std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface, const vector<double> &steps)
+    explicit ALTROSolver(std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface,
+                         const vector<double> &steps)
         : step_sizes_(steps) {
         steps_num_ = steps.size();
-        solver_.reset(new ALILQRSolver<T, M, N>(std::move(ocp_interface), steps));
+        solver_.reset(
+                new ALILQRSolver<T, M, N>(std::move(ocp_interface), steps));
+        // ALTRO prints the combined summary after both clocks have stopped.
+        solver_->SetPrintSummary(false);
     };
 
     virtual ~ALTROSolver() = default;
 
     // The outputs hold the last accepted trajectory, including when polishing stops short.
-    altro::ProjectionStatus Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq) {
-        // The AL-iLQR summary is printed below, after both clocks have stopped.
-        solver_->SetPrintSummary(false);
+    altro::ProjectionStatus Solve(const State &x0,
+                                  const Controls &u0,
+                                  States &x_res_seq,
+                                  Controls &u_res_seq) {
         StopWatch timer;
         timer.start();
         States alilqr_x;
@@ -117,61 +125,57 @@ public:
         // runs once AL-iLQR is close.
         const bool project = alilqr_violation < projection_trigger_;
         const auto projection =
-                project ? ProjectTrajectory(alilqr_x, alilqr_u) : ProjectionResult{altro::ProjectionStatus::Skipped, 0};
+                project ? ProjectTrajectory(alilqr_x, alilqr_u)
+                        : ProjectionResult{altro::ProjectionStatus::Skipped, 0};
         const double proj_ms = proj_timer.elapsed_microseconds() / 1.0e3;
         x_res_seq = alilqr_x;
         u_res_seq = alilqr_u;
-        solver_->Problem().GetCostUnionPtr()->EvaluateConstraints(x_res_seq, u_res_seq);
+        solver_->Problem().GetCostUnionPtr()->EvaluateConstraints(x_res_seq,
+                                                                  u_res_seq);
         const double dyn_residual = MaxDynamicsResidual(x_res_seq, u_res_seq);
         const double total_ms = timer.elapsed_microseconds() / 1.0e3;
 
-        cout << "AL-iLQR Solver Status : ";
-        solver_->ShowSolverState();
-        cout << "AL-iLQR iterations : " << solver_->TotalIterations() << ", time : " << solver_->SolveTimeMs()
-             << " ms\n";
-        cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
-        if (project) {
-            cout << "ALTRO projection method : " << altro::ProjectionMethodName(projection_method_) << "\n";
-            cout << "ALTRO projection : " << projection.accepted_steps << " steps, " << proj_ms << " ms\n";
-        } else {
-            cout << "ALTRO projection skipped: AL-iLQR violation above " << projection_trigger_ << "\n";
-        }
-        cout << "ALTRO projection status : " << altro::ProjectionStatusName(projection.status) << "\n";
-        cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
-            cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
-        }
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
-            cout << "  " << cons_ptr->GetName() << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
-        }
-        cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
-        cout << "altro solver consumes : " << total_ms << " ms\n";
+        PrintSummary(alilqr_violation,
+                     project,
+                     projection,
+                     proj_ms,
+                     dyn_residual,
+                     total_ms);
         return projection.status;
     }
 
     void SetVerbose(const bool verbose) { solver_->SetVerbose(verbose); }
+
+    void SetPrintSummary(bool print) { print_summary_ = print; }
 
     // During polishing, satisfied constraints whose first-order distance to the boundary
     // (g / |grad g|, in z-space) is below this value are held in place.
     void SetActiveTolerance(const double dist) { active_dist_ = dist; }
 
     // Polishing runs only when the AL-iLQR violation is below this value.
-    void SetProjectionTrigger(const double violation) { projection_trigger_ = violation; }
+    void SetProjectionTrigger(const double violation) {
+        projection_trigger_ = violation;
+    }
 
-    void SetProjectionMethod(altro::ProjectionMethod method) { projection_method_ = method; }
+    void SetProjectionMethod(altro::ProjectionMethod method) {
+        projection_method_ = method;
+    }
 
-    void SetUpdateConfig(const bool update) { solver_->SetUpdateConfig(update); }
+    void SetUpdateConfig(const bool update) {
+        solver_->SetUpdateConfig(update);
+    }
 
     MatrixXd CalcAllViolations(States &x,
                                Controls &u,
-                               std::unordered_map<std::string, vector<double>> &violation_record) const {
+                               std::unordered_map<std::string, vector<double>>
+                                       &violation_record) const {
         const auto &cost_union = solver_->Problem().GetCostUnionPtr();
         vector<double> violations;
-        violations.reserve(
-                (cost_union->GetImmutableEqConstraints().size() + cost_union->GetImmutableIneqConstraints().size()) *
-                steps_num_);
+        violations.reserve((cost_union->GetImmutableEqConstraints().size() +
+                            cost_union->GetImmutableIneqConstraints().size()) *
+                           steps_num_);
         int rows = 0;
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableEqConstraints()) {
+        for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints()) {
             vector<double> vio;
             vio.reserve(steps_num_);
             cout << cons_ptr->GetName() << "\n";
@@ -183,12 +187,13 @@ public:
                     vio.emplace_back(violation);
                 }
             }
-            std::string name = solver_->Problem().GetCostUnionPtr()->GetTypeNames().at(cons_ptr->GetTypeIndex());
+            std::string name =
+                    cost_union->GetTypeNames().at(cons_ptr->GetTypeIndex());
             violation_record[name] = vio;
             ++rows;
         }
 
-        for (const auto &cons_ptr : solver_->Problem().GetCostUnionPtr()->GetImmutableIneqConstraints()) {
+        for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints()) {
             vector<double> vio;
             vio.reserve(steps_num_);
             cout << cons_ptr->GetName() << "\n";
@@ -200,13 +205,17 @@ public:
                     vio.emplace_back(violation);
                 }
             }
-            std::string name = solver_->Problem().GetCostUnionPtr()->GetTypeNames().at(cons_ptr->GetTypeIndex());
+            std::string name =
+                    cost_union->GetTypeNames().at(cons_ptr->GetTypeIndex());
             violation_record[name] = vio;
             ++rows;
         }
 
-        Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> Violations(
-                violations.data(), rows, steps_num_);
+        Eigen::Map<Eigen::Matrix<T,
+                                 Eigen::Dynamic,
+                                 Eigen::Dynamic,
+                                 Eigen::RowMajor>>
+                Violations(violations.data(), rows, steps_num_);
         return Violations;
     }
 
@@ -225,13 +234,15 @@ private:
     // Riccati and sparse KKT solve the same linearized problem. Both apply the control
     // correction by a nonlinear rollout from x_0, with feedback gains when using Riccati.
     // ------------------------------------------------------------------------------
-    constexpr static double kHessianReg = 1.0e-6; // relative to the normalized H, keeps it positive definite
+    // relative to the normalized H, keeps it positive definite
+    constexpr static double kHessianReg = 1.0e-6;
     constexpr static double kDampingInit = 1.0e-6;
     constexpr static double kDampingMin = 1.0e-10;
     constexpr static int kMaxDampingTries = 8;
     constexpr static int kMaxProjectionLineSearch = 6;
     constexpr static int kMaxProjectionIter = 30;
-    constexpr static double kMinProjectionProgress = 1.0e-3; // relative decrease per step
+    // relative decrease per step
+    constexpr static double kMinProjectionProgress = 1.0e-3;
 
     // Per-step blocks of the cost Hessian (cost terms only, no AL terms), scaled to a mean
     // diagonal of 1. The projection does not depend on a constant scale of H, but the
@@ -243,7 +254,9 @@ private:
         MatrixLXU xu;
     };
 
-    std::vector<StageHessian> BuildCostHessian(const States &x, const Controls &u) const {
+    std::vector<StageHessian> BuildCostHessian(const States &x,
+                                               const Controls &u) const {
+        const auto &cost_union = solver_->Problem().GetCostUnionPtr();
         std::vector<StageHessian> h(steps_num_ + 1);
         double diag_sum = 0.0;
         for (int t = 0; t <= steps_num_; ++t) {
@@ -251,7 +264,7 @@ private:
             h[t].xx.setZero();
             h[t].uu.setZero();
             h[t].xu.setZero();
-            for (const auto &ct : solver_->Problem().GetCostUnionPtr()->GetCostTerms()) {
+            for (const auto &ct : cost_union->GetCostTerms()) {
                 MatrixLXX cur_lxx = MatrixLXX::Zero();
                 MatrixLUU cur_luu = MatrixLUU::Zero();
                 MatrixLXU cur_lxu = MatrixLXU::Zero();
@@ -268,7 +281,8 @@ private:
                 diag_sum += h[t].uu.diagonal().cwiseAbs().sum();
             }
         }
-        const double scale = std::max(diag_sum / (steps_num_ * static_cast<double>(M + N)), 1e-12);
+        const double scale = std::max(
+                diag_sum / (steps_num_ * static_cast<double>(M + N)), 1e-12);
         for (auto &b : h) {
             b.xx = b.xx / scale + kHessianReg * MatrixLXX::Identity();
             b.uu = b.uu / scale + kHessianReg * MatrixLUU::Identity();
@@ -315,9 +329,12 @@ private:
         const auto &model = solver_->Problem().GetModel();
         double v = 0.0;
         for (int t = 0; t < steps_num_; ++t) {
-            v = std::max(v,
-                         model->StateDifference(x[t + 1], model->ForwardCalculation(x[t], u[t], step_sizes_[t]))
-                                 .template lpNorm<Eigen::Infinity>());
+            v = std::max(
+                    v,
+                    model->StateDifference(x[t + 1],
+                                           model->ForwardCalculation(
+                                                   x[t], u[t], step_sizes_[t]))
+                            .template lpNorm<Eigen::Infinity>());
         }
         return v;
     }
@@ -329,13 +346,19 @@ private:
     //  - satisfied inequalities within active_dist_ of the boundary (distance g / |grad g|):
     //    residual 0, i.e. do not move them to first order, so that fixing one constraint
     //    does not push a neighbouring one out.
-    std::vector<ActiveRow> CollectActiveRows(const States &x, const Controls &u) const {
+    std::vector<ActiveRow> CollectActiveRows(const States &x,
+                                             const Controls &u) const {
         auto &cost_union = solver_->Problem().GetCostUnionPtr();
         std::vector<ActiveRow> rows;
         // Typically a few active rows per step; one growth step at most in the common case.
         rows.reserve(4 * (steps_num_ + 1));
-        auto make_row = [](int t, double g, const VecX &gx, const VecU &gu, double residual) {
-            const double norm = std::max(std::sqrt(gx.squaredNorm() + gu.squaredNorm()), 1e-12);
+        auto make_row = [](int t,
+                           double g,
+                           const VecX &gx,
+                           const VecU &gu,
+                           double residual) {
+            const double norm = std::max(
+                    std::sqrt(gx.squaredNorm() + gu.squaredNorm()), 1e-12);
             return ActiveRow{t, residual, g / norm, gx, gu};
         };
         RawConstraintRows<T, M, N> raw;
@@ -346,7 +369,11 @@ private:
                     continue;
                 }
                 c->Gradient(t, x[t], u_t);
-                rows.push_back(make_row(t, c->ConsVal(), c->GradientX(), c->GradientU(), c->ConsVal()));
+                rows.push_back(make_row(t,
+                                        c->ConsVal(),
+                                        c->GradientX(),
+                                        c->GradientU(),
+                                        c->ConsVal()));
             }
             for (auto &c : cost_union->GetIneqConstraints()) {
                 if (!c->Evaluate(t, x[t], u_t)) {
@@ -355,14 +382,19 @@ private:
                 raw.clear();
                 if (c->RawConstraints(t, x[t], u_t, raw)) {
                     for (const auto &r : raw) {
-                        ActiveRow row = make_row(t, r.g, r.gx, r.gu, std::max(r.g, 0.0));
+                        ActiveRow row = make_row(
+                                t, r.g, r.gx, r.gu, std::max(r.g, 0.0));
                         if (r.g > kTol or row.distance > -active_dist_) {
                             rows.push_back(std::move(row));
                         }
                     }
                 } else if (c->ConsVal() > kTol) {
                     c->Gradient(t, x[t], u_t);
-                    rows.push_back(make_row(t, c->ConsVal(), c->GradientX(), c->GradientU(), c->ConsVal()));
+                    rows.push_back(make_row(t,
+                                            c->ConsVal(),
+                                            c->GradientX(),
+                                            c->GradientU(),
+                                            c->ConsVal()));
                 }
             }
         }
@@ -372,9 +404,10 @@ private:
     using StageQuadratic = altro::StageQuadratic<T, M, N>;
 
     // Cost Hessian plus the 1/delta penalty of the active rows, per step.
-    std::vector<StageQuadratic> BuildStageQuadratics(const std::vector<StageHessian> &h,
-                                                     const std::vector<ActiveRow> &rows,
-                                                     const double delta) const {
+    std::vector<StageQuadratic> BuildStageQuadratics(
+            const std::vector<StageHessian> &h,
+            const std::vector<ActiveRow> &rows,
+            const double delta) const {
         std::vector<StageQuadratic> q(steps_num_ + 1);
         for (int t = 0; t <= steps_num_; ++t) {
             q[t].Qxx = h[t].xx;
@@ -412,12 +445,14 @@ private:
             if (K.empty()) {
                 u_new[t] = u[t] + alpha * k[t];
             } else {
-                u_new[t] = u[t] + alpha * k[t] + K[t] * model->StateDifference(x_new[t], x[t]);
+                u_new[t] = u[t] + alpha * k[t] +
+                           K[t] * model->StateDifference(x_new[t], x[t]);
             }
             if (!x_new[t].allFinite() or !u_new[t].allFinite()) {
                 return false;
             }
-            x_new[t + 1] = model->ForwardCalculation(x_new[t], u_new[t], step_sizes_[t]);
+            x_new[t + 1] = model->ForwardCalculation(
+                    x_new[t], u_new[t], step_sizes_[t]);
         }
         return x_new[steps_num_].allFinite();
     }
@@ -437,7 +472,8 @@ private:
             Controls u_r;
             // AL-iLQR only returns finite trajectories, so this cannot fail.
             const bool rollout_ok = Rollout(x, u, k0, {}, 0.0, x_r, u_r);
-            assert(rollout_ok && "ALTRO: the AL-iLQR trajectory must be finite");
+            assert(rollout_ok &&
+                   "ALTRO: the AL-iLQR trajectory must be finite");
             (void)rollout_ok;
             x = std::move(x_r);
         }
@@ -452,7 +488,8 @@ private:
         for (int iter = 0; iter < kMaxProjectionIter; ++iter) {
             const double v = MaxConstraintViolation(x, u);
             if (solver_->Verbose()) {
-                cout << "ALTRO projection iter " << iter << ": max violation = " << v << "\n";
+                cout << "ALTRO projection iter " << iter
+                     << ": max violation = " << v << "\n";
             }
             if (v < kTol) {
                 return {ProjectionStatus::Converged, accepted_steps};
@@ -471,13 +508,18 @@ private:
             dynamics.clear();
             for (int t = 0; t < steps_num_; ++t) {
                 dynamics.push_back(
-                        {model->JacobianX(x[t], u[t], step_sizes_[t]), model->JacobianU(x[t], u[t], step_sizes_[t])});
+                        {model->JacobianX(x[t], u[t], step_sizes_[t]),
+                         model->JacobianU(x[t], u[t], step_sizes_[t])});
             }
             bool accepted = false;
             bool backend_solved = false;
-            for (int tries = 0; tries < kMaxDampingTries and !accepted; ++tries) {
+            for (int tries = 0; tries < kMaxDampingTries and !accepted;
+                 ++tries) {
                 altro::ProjectionStep<T, M, N> step;
-                if (altro::SolveProjection(projection_method_, dynamics, BuildStageQuadratics(h, rows, delta), step)) {
+                if (altro::SolveProjection(projection_method_,
+                                           dynamics,
+                                           BuildStageQuadratics(h, rows, delta),
+                                           step)) {
                     backend_solved = true;
                     // Backtracking on the max constraint violation.
                     double alpha = 1.0;
@@ -486,7 +528,13 @@ private:
                         Controls u_n;
                         // A non-finite trial is rejected like one that does not reduce the
                         // violation.
-                        if (Rollout(x, u, step.control_delta, step.feedback, alpha, x_n, u_n) and
+                        if (Rollout(x,
+                                    u,
+                                    step.control_delta,
+                                    step.feedback,
+                                    alpha,
+                                    x_n,
+                                    u_n) and
                             MaxConstraintViolation(x_n, u_n) < v) {
                             x = std::move(x_n);
                             u = std::move(u_n);
@@ -496,23 +544,70 @@ private:
                         alpha *= 0.5;
                     }
                 } else if (solver_->Verbose()) {
-                    cout << "ALTRO projection: " << altro::ProjectionMethodName(projection_method_)
+                    cout << "ALTRO projection: "
+                         << altro::ProjectionMethodName(projection_method_)
                          << " failed to solve at damping " << delta << "\n";
                 }
-                delta = accepted ? std::max(delta / 10.0, kDampingMin) : delta * 100.0;
+                delta = accepted ? std::max(delta / 10.0, kDampingMin)
+                                 : delta * 100.0;
             }
             if (!accepted) {
-                return {backend_solved ? ProjectionStatus::NoImprovingStep : ProjectionStatus::BackendFailed,
+                return {backend_solved ? ProjectionStatus::NoImprovingStep
+                                       : ProjectionStatus::BackendFailed,
                         accepted_steps};
             }
             ++accepted_steps;
         }
         // The final accepted step may have reached tolerance at the iteration limit.
-        return {MaxConstraintViolation(x, u) < kTol ? ProjectionStatus::Converged : ProjectionStatus::IterationLimit,
+        return {MaxConstraintViolation(x, u) < kTol
+                        ? ProjectionStatus::Converged
+                        : ProjectionStatus::IterationLimit,
                 accepted_steps};
     }
 
-    const double GetMaxViolation() const { return solver_->Problem().GetCostUnionPtr()->GetMaxViolation(); }
+    void PrintSummary(double alilqr_violation,
+                      bool project,
+                      const ProjectionResult &projection,
+                      double proj_ms,
+                      double dyn_residual,
+                      double total_ms) const {
+        if (!print_summary_) {
+            return;
+        }
+
+        cout << "AL-iLQR Solver Status : ";
+        solver_->ShowSolverState();
+        cout << "AL-iLQR iterations : " << solver_->TotalIterations()
+             << ", time : " << solver_->SolveTimeMs() << " ms\n";
+        cout << "AL-iLQR max_violation : " << alilqr_violation << "\n";
+        if (project) {
+            cout << "ALTRO projection method : "
+                 << altro::ProjectionMethodName(projection_method_) << "\n";
+            cout << "ALTRO projection : " << projection.accepted_steps
+                 << " steps, " << proj_ms << " ms\n";
+        } else {
+            cout << "ALTRO projection skipped: AL-iLQR violation above "
+                 << projection_trigger_ << "\n";
+        }
+        cout << "ALTRO projection status : "
+             << altro::ProjectionStatusName(projection.status) << "\n";
+        cout << "ALTRO solver max violation : " << GetMaxViolation() << "\n";
+        const auto &cost_union = solver_->Problem().GetCostUnionPtr();
+        for (const auto &cons_ptr : cost_union->GetImmutableEqConstraints()) {
+            cout << "  " << cons_ptr->GetName()
+                 << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
+        }
+        for (const auto &cons_ptr : cost_union->GetImmutableIneqConstraints()) {
+            cout << "  " << cons_ptr->GetName()
+                 << " max violation : " << cons_ptr->GetMaxViolation() << "\n";
+        }
+        cout << "ALTRO dynamics residual : " << dyn_residual << "\n";
+        cout << "altro solver consumes : " << total_ms << " ms\n";
+    }
+
+    const double GetMaxViolation() const {
+        return solver_->Problem().GetCostUnionPtr()->GetMaxViolation();
+    }
 
 private:
     std::unique_ptr<ALILQRSolver<T, M, N>> solver_;
@@ -520,7 +615,9 @@ private:
     int steps_num_;
     double active_dist_ = 0.05;
     double projection_trigger_ = kDefaultProjectionTrigger;
-    altro::ProjectionMethod projection_method_ = altro::ProjectionMethod::Riccati;
+    bool print_summary_ = true;
+    altro::ProjectionMethod projection_method_ =
+            altro::ProjectionMethod::Riccati;
 };
 
 #endif //ALILQR_ALTRO_SOLVER_HPP

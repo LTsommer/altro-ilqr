@@ -15,17 +15,10 @@ public:
     SmoothKappaModel() = default;
     virtual ~SmoothKappaModel() = default;
 
-    State PrepareInitialState(const State &state) const override {
-        State prepared = state;
-        prepared(kTheta) = vehicle_heading::PrepareInitialHeading(state(kTheta));
-        return prepared;
-    }
+    State PrepareInitialState(const State &state) const override;
 
-    State StateDifference(const State &state, const State &reference) const override {
-        State delta = state - reference;
-        delta(kTheta) = AngleDifference(state(kTheta), reference(kTheta));
-        return delta;
-    }
+    State StateDifference(const State &state,
+                          const State &reference) const override;
 
     // step here is ds
     /* x(k+1) = x(k) + cos(theta(k)) * ds
@@ -34,7 +27,9 @@ public:
      * kappa(k+1) = kappa(k) + dkappa(k) * ds + 1/2 * u(k) * ds^2
      * dkappa(k+1) = dkappa(k) + u(k) * ds
     */
-    inline A JacobianX(const State &state, const Control &u, const double step) const override {
+    inline A JacobianX(const State &state,
+                       const Control &u,
+                       const double step) const override {
         A fx;
         fx.setIdentity();
         fx(kXPos, kTheta) = -trig_table::SinValue(state(kTheta)) * step;
@@ -45,7 +40,9 @@ public:
         return fx;
     };
 
-    inline B JacobianU(const State &state, const Control &u, const double step) const override {
+    inline B JacobianU(const State &state,
+                       const Control &u,
+                       const double step) const override {
         B fu;
         fu.setZero();
         fu(kTheta) = 1.0 / 6.0 * cube<double>(step);
@@ -54,17 +51,24 @@ public:
         return fu;
     }
 
-    inline State ForwardCalculation(const State &state, const Control &u, const double step) const override {
-        const double heading_change = state(kKappa) * step + 0.5 * state(kDkappa) * sqr<double>(step) +
-                                      (1.0 / 6.0) * u(kDDkappa) * cube<double>(step);
+    inline State ForwardCalculation(const State &state,
+                                    const Control &u,
+                                    const double step) const override {
+        const double heading_change =
+                state(kKappa) * step +
+                0.5 * state(kDkappa) * sqr<double>(step) +
+                (1.0 / 6.0) * u(kDDkappa) * cube<double>(step);
         if (!vehicle_heading::IsSupportedAngle(heading_change)) {
             return State::Constant(std::numeric_limits<double>::quiet_NaN());
         }
         State new_state;
-        new_state(kXPos) = state(kXPos) + trig_table::CosValue(state(kTheta)) * step;
-        new_state(kYPos) = state(kYPos) + trig_table::SinValue(state(kTheta)) * step;
+        new_state(kXPos) =
+                state(kXPos) + trig_table::CosValue(state(kTheta)) * step;
+        new_state(kYPos) =
+                state(kYPos) + trig_table::SinValue(state(kTheta)) * step;
         new_state(kTheta) = NormalizeAngle(state(kTheta) + heading_change);
-        new_state(kKappa) = state(kKappa) + state(kDkappa) * step + 0.5 * u(kDDkappa) * sqr<double>(step);
+        new_state(kKappa) = state(kKappa) + state(kDkappa) * step +
+                            0.5 * u(kDDkappa) * sqr<double>(step);
         new_state(kDkappa) = state(kDkappa) + u(kDDkappa) * step;
         return new_state;
     }

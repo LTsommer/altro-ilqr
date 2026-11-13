@@ -68,11 +68,76 @@ vector<double> polyfit(const vector<std::pair<double, double>> &array, int n) {
 }
 } // namespace
 
-FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
-                                               spline &&x_s,
-                                               spline &&y_s,
-                                               const FrenetCoordinateSystemParameters &fcs_params)
-    : m_fcs_params(fcs_params), m_length(length), m_x_s(std::move(x_s)), m_y_s(std::move(y_s)), m_available(false) {
+void FrenetCoordinateSystemParameters::Init() {
+    zero_speed_threshold = 0.1;
+    coord_transform_precision = 1e-2;
+    step_s = 0.3;
+    coarse_step_s = 1.0;
+    optimization_gamma = 0.5;
+    max_iter = 15;
+}
+
+FrenetCoordinateSystem::FrenetCoordinateSystem() {}
+
+FrenetCoordinateSystem::~FrenetCoordinateSystem() {}
+
+double FrenetCoordinateSystem::GetRefCurveHeading(double s) const {
+    assert(s <= m_length && s >= 0);
+    return atan2(m_y_s.deriv<1>(s), m_x_s.deriv<1>(s));
+}
+
+Point2D FrenetCoordinateSystem::GetRefCurveUnitTangent(double s) const {
+    assert(s <= m_length && s >= 0);
+    const double dx = m_x_s.deriv<1>(s);
+    const double dy = m_y_s.deriv<1>(s);
+    const double norm_squared = dx * dx + dy * dy;
+    if (norm_squared >= std::numeric_limits<double>::min() &&
+        std::isfinite(norm_squared)) {
+        const double inverse_norm = 1.0 / std::sqrt(norm_squared);
+        return {dx * inverse_norm, dy * inverse_norm};
+    }
+    // Preserve the heading convention for degenerate or out-of-range derivatives.
+    const double heading = std::atan2(dy, dx);
+    return {std::cos(heading), std::sin(heading)};
+}
+
+double FrenetCoordinateSystem::GetRefCurveAvgHeading(double s,
+                                                     double delta_s) const {
+    assert(s <= m_length && s >= 0);
+    double real_delta = std::min<double>(m_length - s, delta_s);
+    if (real_delta > 0.1) {
+        return atan2(m_y_s.extrapolate(s + real_delta) - m_y_s.extrapolate(s),
+                     m_x_s.extrapolate(s + real_delta) - m_x_s.extrapolate(s));
+    } else {
+        return GetRefCurveHeading(s);
+    }
+}
+
+double FrenetCoordinateSystem::GetRefCurveCurvature(double s) const {
+    assert(s <= m_length && s >= 0);
+    return m_k_s.extrapolate(s);
+}
+
+double FrenetCoordinateSystem::GetRefCurveDCurvature(double s) const {
+    assert(s <= m_length && s >= 0);
+    return m_k_s.deriv<1>(s);
+}
+
+Point2D FrenetCoordinateSystem::GetRefCurvePoint(double s) const {
+    assert(s <= m_length && s >= 0);
+    return {m_x_s.extrapolate(s), m_y_s.extrapolate(s)};
+}
+
+FrenetCoordinateSystem::FrenetCoordinateSystem(
+        double length,
+        spline &&x_s,
+        spline &&y_s,
+        const FrenetCoordinateSystemParameters &fcs_params)
+    : m_fcs_params(fcs_params),
+      m_length(length),
+      m_x_s(std::move(x_s)),
+      m_y_s(std::move(y_s)),
+      m_available(false) {
     // If the curvature profile is not given, then compute the curvature profile
     double tmp_s = 0;
     vector<double> vec_s;
@@ -94,7 +159,11 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(double length,
 }
 
 FrenetCoordinateSystem::FrenetCoordinateSystem(
-        double length, spline &&x_s, spline &&y_s, spline &&k_s, const FrenetCoordinateSystemParameters &fcs_params)
+        double length,
+        spline &&x_s,
+        spline &&y_s,
+        spline &&k_s,
+        const FrenetCoordinateSystemParameters &fcs_params)
     : m_fcs_params(fcs_params),
       m_length(length),
       m_x_s(std::move(x_s)),
@@ -102,8 +171,9 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(
       m_k_s(std::move(k_s)),
       m_available(true) {}
 
-FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<Point2D> &vec_pts,
-                                               const FrenetCoordinateSystemParameters &fcs_params)
+FrenetCoordinateSystem::FrenetCoordinateSystem(
+        const vector<Point2D> &vec_pts,
+        const FrenetCoordinateSystemParameters &fcs_params)
     : m_fcs_params(fcs_params), m_available(false) {
     vector<double> vec_x;
     vector<double> vec_y;
@@ -116,8 +186,9 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<Point2D> &vec_pts,
     ConstructFrenetCoordinateSystem(vec_x, vec_y);
 }
 
-FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<Vec2d> &vec_pts,
-                                               const FrenetCoordinateSystemParameters &fcs_params)
+FrenetCoordinateSystem::FrenetCoordinateSystem(
+        const vector<Vec2d> &vec_pts,
+        const FrenetCoordinateSystemParameters &fcs_params)
     : m_fcs_params(fcs_params), m_available(false) {
     vector<double> vec_x, vec_y;
     vec_x.reserve(vec_pts.size());
@@ -129,17 +200,19 @@ FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<Vec2d> &vec_pts,
     ConstructFrenetCoordinateSystem(vec_x, vec_y);
 }
 
-FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<double> &vec_x,
-                                               const vector<double> &vec_y,
-                                               const FrenetCoordinateSystemParameters &fcs_params)
+FrenetCoordinateSystem::FrenetCoordinateSystem(
+        const vector<double> &vec_x,
+        const vector<double> &vec_y,
+        const FrenetCoordinateSystemParameters &fcs_params)
     : m_fcs_params(fcs_params), m_available(false) {
     ConstructFrenetCoordinateSystem(vec_x, vec_y);
 }
-FrenetCoordinateSystem::FrenetCoordinateSystem(const vector<double> &vec_x,
-                                               const vector<double> &vec_y,
-                                               const FrenetCoordinateSystemParameters &fcs_params,
-                                               double s_start,
-                                               double s_end)
+FrenetCoordinateSystem::FrenetCoordinateSystem(
+        const vector<double> &vec_x,
+        const vector<double> &vec_y,
+        const FrenetCoordinateSystemParameters &fcs_params,
+        double s_start,
+        double s_end)
     : m_fcs_params(fcs_params), m_available(false) {
     ConstructFrenetCoordinateSystem(vec_x, vec_y, s_start, s_end);
 }
@@ -149,17 +222,19 @@ void FrenetCoordinateSystem::set_coarse_search_points() {
     double end_pos{m_length};
     double step = m_fcs_params.coarse_step_s;
     for (double pos = start_pos; pos < end_pos; pos += step) {
-        coarse_search_points_.emplace_back(
-                std::make_pair(pos, Point2D{m_x_s.extrapolate(pos), m_y_s.extrapolate(pos)}));
+        coarse_search_points_.emplace_back(std::make_pair(
+                pos, Point2D{m_x_s.extrapolate(pos), m_y_s.extrapolate(pos)}));
     }
-    coarse_search_points_.emplace_back(
-            std::make_pair(end_pos, Point2D{m_x_s.extrapolate(end_pos), m_y_s.extrapolate(end_pos)}));
+    coarse_search_points_.emplace_back(std::make_pair(
+            end_pos,
+            Point2D{m_x_s.extrapolate(end_pos), m_y_s.extrapolate(end_pos)}));
 }
 
-void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double> &vec_x,
-                                                             const vector<double> &vec_y,
-                                                             double s_polyfit_start,
-                                                             double s_polyfit_end) {
+void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(
+        const vector<double> &vec_x,
+        const vector<double> &vec_y,
+        double s_polyfit_start,
+        double s_polyfit_end) {
     if (vec_x.empty() || vec_y.empty()) {
         m_available = false;
         return;
@@ -170,7 +245,8 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
     vec_s_.reserve(vec_s_.size() + vec_x.size());
     vec_s_.push_back(0);
     for (int i = 1; i < (int)vec_x.size(); i++) {
-        vec_s_.push_back(vec_s_[i - 1] + sqrt(sqr(vec_x[i] - vec_x[i - 1]) + sqr(vec_y[i] - vec_y[i - 1])));
+        vec_s_.push_back(vec_s_[i - 1] + sqrt(sqr(vec_x[i] - vec_x[i - 1]) +
+                                              sqr(vec_y[i] - vec_y[i - 1])));
     }
     m_x_s.set_points(vec_s_, vec_x);
     m_y_s.set_points(vec_s_, vec_y);
@@ -198,15 +274,16 @@ void FrenetCoordinateSystem::ConstructFrenetCoordinateSystem(const vector<double
     }
     m_k_s.set_points(vec_s_, vec_k);
     // polyfit curvature of frenet coordinate
-    curvature_fit_parameters = polyfit(vec_c, 4); // Fitting 3rd degree polynomial:4 coefficients
+    // Fitting 3rd degree polynomial:4 coefficients
+    curvature_fit_parameters = polyfit(vec_c, 4);
     curvature_fit_parameters.push_back(POLYFIT_GAIN);
     m_available = true;
 
     set_coarse_search_points();
 }
 
-vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(const vector<double> &x,
-                                                                               const vector<double> &y) {
+vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(
+        const vector<double> &x, const vector<double> &y) {
     assert(x.size() == y.size() and x.size() > 3);
     vector<double> headings, kappas;
     // first : heading, second: curvature
@@ -214,7 +291,8 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
     vector<double> dxs, dys, ddxs, ddys, dddxs, dddys;
     int num = x.size();
     rst.resize(num);
-    for (auto *v : {&headings, &kappas, &dxs, &dys, &ddxs, &ddys, &dddxs, &dddys}) {
+    for (auto *v :
+         {&headings, &kappas, &dxs, &dys, &ddxs, &ddys, &dddxs, &dddys}) {
         v->reserve(num);
     }
     for (int i = 0; i < num; ++i) {
@@ -262,8 +340,10 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
             xds = (x[i] - x[i - 1]) / (accumulated_s[i] - accumulated_s[i - 1]);
             yds = (y[i] - y[i - 1]) / (accumulated_s[i] - accumulated_s[i - 1]);
         } else {
-            xds = (x[i + 1] - x[i - 1]) / (accumulated_s[i + 1] - accumulated_s[i - 1]);
-            yds = (y[i + 1] - y[i - 1]) / (accumulated_s[i + 1] - accumulated_s[i - 1]);
+            xds = (x[i + 1] - x[i - 1]) /
+                  (accumulated_s[i + 1] - accumulated_s[i - 1]);
+            yds = (y[i + 1] - y[i - 1]) /
+                  (accumulated_s[i + 1] - accumulated_s[i - 1]);
         }
         ddxs.emplace_back(xds);
         ddys.emplace_back(yds);
@@ -273,14 +353,20 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
         double xdds{0.0};
         double ydds{0.0};
         if (i == 0) {
-            xdds = (ddxs[i + 1] - ddxs[i]) / (accumulated_s[i + 1] - accumulated_s[i]);
-            ydds = (ddys[i + 1] - ddys[i]) / (accumulated_s[i + 1] - accumulated_s[i]);
+            xdds = (ddxs[i + 1] - ddxs[i]) /
+                   (accumulated_s[i + 1] - accumulated_s[i]);
+            ydds = (ddys[i + 1] - ddys[i]) /
+                   (accumulated_s[i + 1] - accumulated_s[i]);
         } else if (i == num - 1) {
-            xdds = (ddxs[i] - ddxs[i - 1]) / (accumulated_s[i] - accumulated_s[i - 1]);
-            ydds = (ddys[i] - ddys[i - 1]) / (accumulated_s[i] - accumulated_s[i - 1]);
+            xdds = (ddxs[i] - ddxs[i - 1]) /
+                   (accumulated_s[i] - accumulated_s[i - 1]);
+            ydds = (ddys[i] - ddys[i - 1]) /
+                   (accumulated_s[i] - accumulated_s[i - 1]);
         } else {
-            xdds = (ddxs[i + 1] - ddxs[i - 1]) / (accumulated_s[i + 1] - accumulated_s[i - 1]);
-            ydds = (ddys[i + 1] - ddys[i - 1]) / (accumulated_s[i + 1] - accumulated_s[i - 1]);
+            xdds = (ddxs[i + 1] - ddxs[i - 1]) /
+                   (accumulated_s[i + 1] - accumulated_s[i - 1]);
+            ydds = (ddys[i + 1] - ddys[i - 1]) /
+                   (accumulated_s[i + 1] - accumulated_s[i - 1]);
         }
 
         dddxs.emplace_back(xdds);
@@ -292,23 +378,31 @@ vector<std::pair<double, double>> FrenetCoordinateSystem::compute_path_profile(c
         double yds = ddys[i];
         double xdds = dddxs[i];
         double ydds = dddys[i];
-        double k = (xds * ydds - yds * xdds) / (hypot(xds, yds) * (xds * xds + yds * yds) + 1e-6);
+        double k = (xds * ydds - yds * xdds) /
+                   (hypot(xds, yds) * (xds * xds + yds * yds) + 1e-6);
         kappas.emplace_back(k);
     }
 
     int iter = 0;
-    std::for_each(rst.begin(), rst.end(), [&iter, headings, kappas](std::pair<double, double> &p) {
-        p.first = headings[iter];
-        p.second = kappas[iter];
-        ++iter;
-    });
+    std::for_each(rst.begin(),
+                  rst.end(),
+                  [&iter, headings, kappas](std::pair<double, double> &p) {
+                      p.first = headings[iter];
+                      p.second = kappas[iter];
+                      ++iter;
+                  });
 
     return rst;
 }
 
 // Find the offset that has the minimal distance to the given point
 double FrenetCoordinateSystem::FindMinDistanceOffsetOnCurve(
-        const Point2D &cart0, double yaw, bool has_yaw, bool has_heuristics, double s_begin, double s_end) const {
+        const Point2D &cart0,
+        double yaw,
+        bool has_yaw,
+        bool has_heuristics,
+        double s_begin,
+        double s_end) const {
     double squared_distance = std::numeric_limits<double>::infinity();
     double shortest_s = 0.0;
     double check_s_begin{0.0}, check_s_end{m_length};
@@ -318,8 +412,10 @@ double FrenetCoordinateSystem::FindMinDistanceOffsetOnCurve(
         check_s_end = std::min(s_end, m_length);
     }
 
-    int start_idx = static_cast<int>(check_s_begin / m_fcs_params.coarse_step_s);
-    int end_idx = static_cast<int>(check_s_end / m_fcs_params.coarse_step_s) + 2;
+    int start_idx =
+            static_cast<int>(check_s_begin / m_fcs_params.coarse_step_s);
+    int end_idx =
+            static_cast<int>(check_s_end / m_fcs_params.coarse_step_s) + 2;
     end_idx = std::min(end_idx, static_cast<int>(coarse_search_points_.size()));
     // Coarsed linear search to counter possible local minimum
     for (int i = start_idx; i < end_idx; i++) {
@@ -345,11 +441,15 @@ double FrenetCoordinateSystem::FindMinDistanceOffsetOnCurve(
     double s_new = (begin_s + end_s) / 2.0;
     int count = 0;
     const double coarse_step = m_fcs_params.coarse_step_s / 10;
-    while (!(std::abs(s_new - s_old) <= m_fcs_params.coord_transform_precision || s_new - begin_s <= 0 ||
-             s_new - end_s >= 0 || count > m_fcs_params.max_iter)) {
+    while (!(std::abs(s_new - s_old) <=
+                     m_fcs_params.coord_transform_precision ||
+             s_new - begin_s <= 0 || s_new - end_s >= 0 ||
+             count > m_fcs_params.max_iter)) {
         s_old = s_new;
-        double step_val = -(m_fcs_params.optimization_gamma / HessianSquaredDistanceToPointOnCurve(s_old, cart0)) *
-                          GradientSquaredDistanceToOffSetOnCurve(s_old, cart0);
+        double step_val =
+                -(m_fcs_params.optimization_gamma /
+                  HessianSquaredDistanceToPointOnCurve(s_old, cart0)) *
+                GradientSquaredDistanceToOffSetOnCurve(s_old, cart0);
         if (step_val < -coarse_step) {
             step_val = -coarse_step;
         } else if (step_val > coarse_step) {
@@ -364,27 +464,38 @@ double FrenetCoordinateSystem::FindMinDistanceOffsetOnCurve(
 
 // Cartesian coordinate to frenet coordinate
 TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
-        const Point2D &cart, Point2D &frenet, bool has_heuristics, double s_begin, double s_end) const {
+        const Point2D &cart,
+        Point2D &frenet,
+        bool has_heuristics,
+        double s_begin,
+        double s_end) const {
     if (!m_available) {
         return TRANSFORM_FAILED;
     }
     double min_point_s;
     if (has_heuristics) {
-        min_point_s = FindMinDistanceOffsetOnCurve(cart, 0.0, false, has_heuristics, s_begin, s_end);
+        min_point_s = FindMinDistanceOffsetOnCurve(
+                cart, 0.0, false, has_heuristics, s_begin, s_end);
     } else {
         min_point_s = FindMinDistanceOffsetOnCurve(cart);
     }
-    double distance = std::sqrt(SquaredDistanceToOffSetOnCurve(min_point_s, cart));
-    Point2D nearest_point = {m_x_s.extrapolate(min_point_s), m_y_s.extrapolate(min_point_s)};
-    Segment2D roadHeading = {nearest_point,
-                             {nearest_point.x + m_fcs_params.step_s * m_x_s.deriv<1>(min_point_s),
-                              nearest_point.y + m_fcs_params.step_s * m_y_s.deriv<1>(min_point_s)}};
+    double distance =
+            std::sqrt(SquaredDistanceToOffSetOnCurve(min_point_s, cart));
+    Point2D nearest_point = {m_x_s.extrapolate(min_point_s),
+                             m_y_s.extrapolate(min_point_s)};
+    Segment2D roadHeading = {
+            nearest_point,
+            {nearest_point.x +
+                     m_fcs_params.step_s * m_x_s.deriv<1>(min_point_s),
+             nearest_point.y +
+                     m_fcs_params.step_s * m_y_s.deriv<1>(min_point_s)}};
 
     Segment2D tangent = {nearest_point, cart};
 
     double cross_p = CrossProduct(roadHeading, tangent);
     frenet.x = min_point_s;
-    double cos_yaw_diff = std::abs<double>(DotProduct(roadHeading, tangent) / (Norm(roadHeading) * Norm(tangent)));
+    double cos_yaw_diff = std::abs<double>(DotProduct(roadHeading, tangent) /
+                                           (Norm(roadHeading) * Norm(tangent)));
     if (distance > 1.0 /*far away from the reference line*/ &&
         std::abs(cos_yaw_diff) > 0.1 /*tolerance for not completely ortho*/) {
         return TRANSFORM_FAILED;
@@ -398,10 +509,15 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
 }
 
 TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
-        const Vec2d &cart, Vec2d &frenet, bool has_heuristics, double s_begin, double s_end) const {
+        const Vec2d &cart,
+        Vec2d &frenet,
+        bool has_heuristics,
+        double s_begin,
+        double s_end) const {
     Point2D cart_(cart.x(), cart.y());
     Point2D frenet_;
-    TRANSFORM_STATUS status = CartCoord2FrenetCoord(cart_, frenet_, has_heuristics, s_begin, s_end);
+    TRANSFORM_STATUS status = CartCoord2FrenetCoord(
+            cart_, frenet_, has_heuristics, s_begin, s_end);
     if (status == TRANSFORM_SUCCESS) {
         frenet.set_x(frenet_.x);
         frenet.set_y(frenet_.y);
@@ -446,17 +562,22 @@ m_y_s.deriv(1, min_point_s)
 }*/
 
 // Cartesian coordinate to frenet coordinate, with yaw information
-TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Point2D &cart, Point2D &frenet, double yaw) const {
+TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
+        const Point2D &cart, Point2D &frenet, double yaw) const {
     if (!m_available) {
         return TRANSFORM_FAILED;
     }
     // TODO(fmy)
     double min_point_s = FindMinDistanceOffsetOnCurve(cart, yaw, false);
     double distance = sqrt(SquaredDistanceToOffSetOnCurve(min_point_s, cart));
-    Point2D nearest_point{m_x_s.extrapolate(min_point_s), m_y_s.extrapolate(min_point_s)};
-    Segment2D roadHeading = {nearest_point,
-                             {nearest_point.x + m_fcs_params.step_s * m_x_s.deriv<1>(min_point_s),
-                              nearest_point.y + m_fcs_params.step_s * m_y_s.deriv<1>(min_point_s)}};
+    Point2D nearest_point{m_x_s.extrapolate(min_point_s),
+                          m_y_s.extrapolate(min_point_s)};
+    Segment2D roadHeading = {
+            nearest_point,
+            {nearest_point.x +
+                     m_fcs_params.step_s * m_x_s.deriv<1>(min_point_s),
+             nearest_point.y +
+                     m_fcs_params.step_s * m_y_s.deriv<1>(min_point_s)}};
 
     Segment2D tangent = {nearest_point, cart};
 
@@ -466,7 +587,8 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Point2D &ca
     if (frenet.x > m_length - m_fcs_params.step_s) {
         return TRANSFORM_FAILED;
     }
-    double cos_yaw_diff = std::abs<double>(DotProduct(roadHeading, tangent) / (Norm(roadHeading) * Norm(tangent)));
+    double cos_yaw_diff = std::abs<double>(DotProduct(roadHeading, tangent) /
+                                           (Norm(roadHeading) * Norm(tangent)));
     if (distance > 1.0 /*far away from the reference line*/ &&
         std::abs(cos_yaw_diff) > 0.1 /*tolerance for not completely ortho*/) {
         return TRANSFORM_FAILED;
@@ -479,7 +601,8 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Point2D &ca
     return TRANSFORM_SUCCESS;
 }
 
-TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Vec2d &cart, Vec2d &frenet, double yaw) const {
+TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(
+        const Vec2d &cart, Vec2d &frenet, double yaw) const {
     Point2D cart_(cart.x(), cart.y());
     Point2D frenet_;
     TRANSFORM_STATUS status = CartCoord2FrenetCoord(cart_, frenet_, yaw);
@@ -492,7 +615,8 @@ TRANSFORM_STATUS FrenetCoordinateSystem::CartCoord2FrenetCoord(const Vec2d &cart
 }
 // Frenet coordinate to cartesian coordinate
 TRANSFORM_STATUS
-FrenetCoordinateSystem::FrenetCoord2CartCoord(const Point2D &frenet, Point2D &cart) const {
+FrenetCoordinateSystem::FrenetCoord2CartCoord(const Point2D &frenet,
+                                              Point2D &cart) const {
     if (!m_available || frenet.x < 0 || frenet.x > m_length) {
         return TRANSFORM_FAILED;
     }
@@ -506,7 +630,8 @@ FrenetCoordinateSystem::FrenetCoord2CartCoord(const Point2D &frenet, Point2D &ca
     return TRANSFORM_SUCCESS;
 }
 
-TRANSFORM_STATUS FrenetCoordinateSystem::FrenetCoord2CartCoord(const Vec2d &frenet, Vec2d &cart) const {
+TRANSFORM_STATUS FrenetCoordinateSystem::FrenetCoord2CartCoord(
+        const Vec2d &frenet, Vec2d &cart) const {
     Point2D frenet_(frenet.x(), frenet.y());
     Point2D cart_;
     TRANSFORM_STATUS status = FrenetCoord2CartCoord(frenet_, cart_);
@@ -520,7 +645,8 @@ TRANSFORM_STATUS FrenetCoordinateSystem::FrenetCoord2CartCoord(const Vec2d &fren
 
 // Cartesian state to coupled frenet state
 TRANSFORM_STATUS
-FrenetCoordinateSystem::CartState2FrenetState(const CartesianState &cart_state, FrenetState &frenet_state) const {
+FrenetCoordinateSystem::CartState2FrenetState(const CartesianState &cart_state,
+                                              FrenetState &frenet_state) const {
     if (!m_available) {
         return TRANSFORM_FAILED;
     }
@@ -528,7 +654,8 @@ FrenetCoordinateSystem::CartState2FrenetState(const CartesianState &cart_state, 
     cart_coord.x = cart_state.x;
     cart_coord.y = cart_state.y;
     Point2D frenet_coord;
-    TRANSFORM_STATUS stat = CartCoord2FrenetCoord(cart_coord, frenet_coord, cart_state.yaw);
+    TRANSFORM_STATUS stat =
+            CartCoord2FrenetCoord(cart_coord, frenet_coord, cart_state.yaw);
     if (stat == TRANSFORM_FAILED) {
         return TRANSFORM_FAILED;
     }
@@ -544,23 +671,31 @@ FrenetCoordinateSystem::CartState2FrenetState(const CartesianState &cart_state, 
     frenet_state.dr = cart_state.speed * sin(yaw_diff);
     double dcurvature = GetRefCurveDCurvature(frenet_state.s);
     double term_a = (dcurvature * frenet_state.r + ref_curvature * dr_ds);
-    double term_b = (cart_state.curvature * (1 - ref_curvature * frenet_state.r) / cos(yaw_diff) - ref_curvature);
+    double term_b =
+            (cart_state.curvature * (1 - ref_curvature * frenet_state.r) /
+                     cos(yaw_diff) -
+             ref_curvature);
     double term_c = (1 - ref_curvature * frenet_state.r);
-    double ddr_dsds = -term_a * tan(yaw_diff) + term_b * term_c / (cos(yaw_diff) * cos(yaw_diff));
+    double ddr_dsds = -term_a * tan(yaw_diff) +
+                      term_b * term_c / (cos(yaw_diff) * cos(yaw_diff));
     frenet_state.ddr_dsds = ddr_dsds;
-    frenet_state.ds = cart_state.speed * cos(yaw_diff) / (1 - ref_curvature * frenet_state.r);
-    frenet_state.dds = (cart_state.acceleration -
-                        sqr(frenet_state.ds) * (term_b * term_c * tan(yaw_diff) - term_a) / cos(yaw_diff)) /
-                       (term_c / cos(yaw_diff));
+    frenet_state.ds = cart_state.speed * cos(yaw_diff) /
+                      (1 - ref_curvature * frenet_state.r);
+    frenet_state.dds =
+            (cart_state.acceleration -
+             sqr(frenet_state.ds) * (term_b * term_c * tan(yaw_diff) - term_a) /
+                     cos(yaw_diff)) /
+            (term_c / cos(yaw_diff));
 
     // Get ddr
-    frenet_state.ddr = frenet_state.dds * dr_ds + sqr(frenet_state.ds) * ddr_dsds;
+    frenet_state.ddr =
+            frenet_state.dds * dr_ds + sqr(frenet_state.ds) * ddr_dsds;
     return TRANSFORM_SUCCESS;
 }
 
 // Coupled frenet state to cartesian state
-TRANSFORM_STATUS FrenetCoordinateSystem::FrenetState2CartState(const FrenetState &frenet_state,
-                                                               CartesianState &cart_state) const {
+TRANSFORM_STATUS FrenetCoordinateSystem::FrenetState2CartState(
+        const FrenetState &frenet_state, CartesianState &cart_state) const {
     if (!m_available) {
         return TRANSFORM_FAILED;
     }
@@ -579,18 +714,25 @@ TRANSFORM_STATUS FrenetCoordinateSystem::FrenetState2CartState(const FrenetState
     double ref_curvature = GetRefCurveCurvature(frenet_state.s);
     double dcurvature = GetRefCurveDCurvature(frenet_state.s);
 
-    cart_state.speed = sqrt(sqr((1 - ref_curvature * frenet_state.r) * frenet_state.ds) + sqr(frenet_state.dr));
-    double yaw_diff = atan(frenet_state.dr_ds / (1 - ref_curvature * frenet_state.r));
+    cart_state.speed =
+            sqrt(sqr((1 - ref_curvature * frenet_state.r) * frenet_state.ds) +
+                 sqr(frenet_state.dr));
+    double yaw_diff =
+            atan(frenet_state.dr_ds / (1 - ref_curvature * frenet_state.r));
     cart_state.yaw = ref_yaw + yaw_diff;
-    double term_a = dcurvature * frenet_state.r + ref_curvature * frenet_state.dr_ds;
+    double term_a =
+            dcurvature * frenet_state.r + ref_curvature * frenet_state.dr_ds;
     double term_b = 1 - ref_curvature * frenet_state.r;
-    cart_state.curvature =
-            ((frenet_state.ddr_dsds + term_a * tan(yaw_diff)) * (cos(yaw_diff) * cos(yaw_diff)) / term_b +
-             ref_curvature) *
-            cos(yaw_diff) / term_b;
+    cart_state.curvature = ((frenet_state.ddr_dsds + term_a * tan(yaw_diff)) *
+                                    (cos(yaw_diff) * cos(yaw_diff)) / term_b +
+                            ref_curvature) *
+                           cos(yaw_diff) / term_b;
     cart_state.acceleration =
             frenet_state.dds * term_b / cos(yaw_diff) +
             (sqr(frenet_state.ds) / cos(yaw_diff)) *
-                    (term_b * tan(yaw_diff) * (cart_state.curvature * term_b / cos(yaw_diff) - ref_curvature) - term_a);
+                    (term_b * tan(yaw_diff) *
+                             (cart_state.curvature * term_b / cos(yaw_diff) -
+                              ref_curvature) -
+                     term_a);
     return TRANSFORM_SUCCESS;
 }

@@ -10,17 +10,21 @@
 namespace altro {
 namespace {
 
-constexpr ProjectionMethod kMethods[] = {
-        ProjectionMethod::Riccati, ProjectionMethod::KKTEigen, ProjectionMethod::KKTQdldl};
+constexpr ProjectionMethod kMethods[] = {ProjectionMethod::Riccati,
+                                         ProjectionMethod::KKTEigen,
+                                         ProjectionMethod::KKTQdldl};
 
 using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor, QDLDL_int>;
 using Triplets = std::vector<Eigen::Triplet<double, QDLDL_int>>;
-static_assert(std::is_same_v<QDLDL_float, double>, "Projection requires double-precision QDLDL");
+static_assert(std::is_same_v<QDLDL_float, double>,
+              "Projection requires double-precision QDLDL");
 
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
-bool SolveRiccati(const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
-                  const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q,
-                  ProjectionStep<Scalar, StateDim, ControlDim> &step) {
+bool SolveRiccati(
+        const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>>
+                &dynamics,
+        const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q,
+        ProjectionStep<Scalar, StateDim, ControlDim> &step) {
     using StateHessian = Eigen::Matrix<Scalar, StateDim, StateDim>;
     using ControlHessian = Eigen::Matrix<Scalar, ControlDim, ControlDim>;
     using Feedback = Eigen::Matrix<Scalar, ControlDim, StateDim>;
@@ -59,8 +63,10 @@ bool SolveRiccati(const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>
 // Completing the square backward along the dynamics gives the pivots of the reduced Hessian.
 // Read the same symmetric blocks as the sparse KKT assembly.
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
-bool HasPositiveReducedHessian(const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
-                               const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q) {
+bool HasPositiveReducedHessian(
+        const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>>
+                &dynamics,
+        const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q) {
     using StateHessian = Eigen::Matrix<Scalar, StateDim, StateDim>;
     using ControlHessian = Eigen::Matrix<Scalar, ControlDim, ControlDim>;
     using ControlStateBlock = Eigen::Matrix<Scalar, ControlDim, StateDim>;
@@ -69,7 +75,8 @@ bool HasPositiveReducedHessian(const std::vector<LinearDynamics<Scalar, StateDim
     for (std::size_t remaining = dynamics.size(); remaining > 0; --remaining) {
         const auto t = remaining - 1;
         const auto &[A, B] = dynamics[t];
-        const ControlHessian Quu = q[t].Quu.template selfadjointView<Eigen::Upper>();
+        const ControlHessian Quu =
+                q[t].Quu.template selfadjointView<Eigen::Upper>();
         const ControlHessian Suu = Quu + B.transpose() * V * B;
         if (!Suu.allFinite()) {
             return false;
@@ -79,9 +86,11 @@ bool HasPositiveReducedHessian(const std::vector<LinearDynamics<Scalar, StateDim
             return false;
         }
         if (t > 0) {
-            const StateHessian Qxx = q[t].Qxx.template selfadjointView<Eigen::Upper>();
+            const StateHessian Qxx =
+                    q[t].Qxx.template selfadjointView<Eigen::Upper>();
             const ControlStateBlock Sux = q[t].Qux + B.transpose() * V * A;
-            V = (Qxx + A.transpose() * V * A - Sux.transpose() * llt.solve(Sux)).eval();
+            V = (Qxx + A.transpose() * V * A - Sux.transpose() * llt.solve(Sux))
+                        .eval();
             V = (0.5 * V + 0.5 * V.transpose()).eval();
         }
     }
@@ -89,7 +98,10 @@ bool HasPositiveReducedHessian(const std::vector<LinearDynamics<Scalar, StateDim
 }
 
 template<typename Derived>
-void AddUpperBlock(Triplets &entries, QDLDL_int row, QDLDL_int col, const Eigen::MatrixBase<Derived> &block) {
+void AddUpperBlock(Triplets &entries,
+                   QDLDL_int row,
+                   QDLDL_int col,
+                   const Eigen::MatrixBase<Derived> &block) {
     for (Eigen::Index j = 0; j < block.cols(); ++j) {
         for (Eigen::Index i = 0; i < block.rows() && row + i <= col + j; ++i) {
             if (block(i, j) != 0.0) {
@@ -99,7 +111,9 @@ void AddUpperBlock(Triplets &entries, QDLDL_int row, QDLDL_int col, const Eigen:
     }
 }
 
-bool SolveWithEigen(const SparseMatrix &upper, const Eigen::VectorXd &rhs, Eigen::VectorXd &solution) {
+bool SolveWithEigen(const SparseMatrix &upper,
+                    const Eigen::VectorXd &rhs,
+                    Eigen::VectorXd &solution) {
     const SparseMatrix matrix = upper.selfadjointView<Eigen::Upper>();
     const Eigen::SparseLU<SparseMatrix> lu(matrix);
     if (lu.info() != Eigen::Success) {
@@ -117,7 +131,8 @@ bool SolveWithQdldl(const SparseMatrix &upper,
     const QDLDL_int *Ap = upper.outerIndexPtr();
     const QDLDL_int *Ai = upper.innerIndexPtr();
     std::vector<QDLDL_int> tree(n), column_counts(n), iwork(3 * n);
-    const QDLDL_int nnz = QDLDL_etree(n, Ap, Ai, iwork.data(), column_counts.data(), tree.data());
+    const QDLDL_int nnz = QDLDL_etree(
+            n, Ap, Ai, iwork.data(), column_counts.data(), tree.data());
     if (nnz < 0) {
         return false;
     }
@@ -140,19 +155,23 @@ bool SolveWithQdldl(const SparseMatrix &upper,
                                               iwork.data(),
                                               fwork.data());
     // A minimum on the dynamics null space gives one positive pivot per primal variable.
-    if (positive_pivots != primal_size || !Eigen::Map<const Eigen::VectorXd>(Dinv.data(), n).allFinite()) {
+    if (positive_pivots != primal_size ||
+        !Eigen::Map<const Eigen::VectorXd>(Dinv.data(), n).allFinite()) {
         return false;
     }
     solution = rhs;
-    QDLDL_solve(n, Lp.data(), Li.data(), Lx.data(), Dinv.data(), solution.data());
+    QDLDL_solve(
+            n, Lp.data(), Li.data(), Lx.data(), Dinv.data(), solution.data());
     return true;
 }
 
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
-bool SolveKkt(ProjectionMethod method,
-              const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
-              const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q,
-              ProjectionStep<Scalar, StateDim, ControlDim> &step) {
+bool SolveKKT(
+        ProjectionMethod method,
+        const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>>
+                &dynamics,
+        const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &q,
+        ProjectionStep<Scalar, StateDim, ControlDim> &step) {
     const bool use_eigen = method == ProjectionMethod::KKTEigen;
     if (use_eigen && !HasPositiveReducedHessian(dynamics, q)) {
         return false;
@@ -163,10 +182,15 @@ bool SolveKkt(ProjectionMethod method,
     const auto horizon = static_cast<QDLDL_int>(dynamics.size());
     const QDLDL_int primal_size = horizon * (StateDim + ControlDim);
     const QDLDL_int size = primal_size + horizon * StateDim;
-    const auto control_index = [](QDLDL_int t) { return t * (StateDim + ControlDim); };
-    const auto state_index = [&](QDLDL_int t) { return control_index(t - 1) + ControlDim; };
+    const auto control_index = [](QDLDL_int t) {
+        return t * (StateDim + ControlDim);
+    };
+    const auto state_index = [&](QDLDL_int t) {
+        return control_index(t - 1) + ControlDim;
+    };
     Triplets entries;
-    entries.reserve(horizon * (StateDim + ControlDim) * (StateDim + ControlDim + 1));
+    entries.reserve(horizon * (StateDim + ControlDim) *
+                    (StateDim + ControlDim + 1));
     Eigen::VectorXd rhs = Eigen::VectorXd::Zero(size);
 
     // Upper triangle of [Q D^T; D 0], with D dz = dx_{t+1} - A dx_t - B du_t.
@@ -197,23 +221,31 @@ bool SolveKkt(ProjectionMethod method,
     SparseMatrix upper(size, size);
     upper.setFromTriplets(entries.begin(), entries.end());
     upper.makeCompressed();
-    if (!rhs.allFinite() || !Eigen::Map<const Eigen::VectorXd>(upper.valuePtr(), upper.nonZeros()).allFinite()) {
+    if (!rhs.allFinite() ||
+        !Eigen::Map<const Eigen::VectorXd>(upper.valuePtr(), upper.nonZeros())
+                 .allFinite()) {
         return false;
     }
 
     Eigen::VectorXd solution;
     const bool solved =
-            use_eigen ? SolveWithEigen(upper, rhs, solution) : SolveWithQdldl(upper, rhs, primal_size, solution);
+            use_eigen ? SolveWithEigen(upper, rhs, solution)
+                      : SolveWithQdldl(upper, rhs, primal_size, solution);
     if (!solved || !solution.allFinite()) {
         return false;
     }
-    const Eigen::VectorXd residual = upper.selfadjointView<Eigen::Upper>() * solution - rhs;
+    const Eigen::VectorXd residual =
+            upper.selfadjointView<Eigen::Upper>() * solution - rhs;
     constexpr double kResidualTolerance = 1.0e-8;
     if (!residual.allFinite() ||
         residual.head(primal_size).lpNorm<Eigen::Infinity>() >
-                kResidualTolerance * std::max(1.0, rhs.lpNorm<Eigen::Infinity>()) ||
+                kResidualTolerance *
+                        std::max(1.0, rhs.lpNorm<Eigen::Infinity>()) ||
         residual.tail(size - primal_size).lpNorm<Eigen::Infinity>() >
-                kResidualTolerance * std::max(1.0, solution.head(primal_size).lpNorm<Eigen::Infinity>())) {
+                kResidualTolerance *
+                        std::max(1.0,
+                                 solution.head(primal_size)
+                                         .lpNorm<Eigen::Infinity>())) {
         return false;
     }
 
@@ -249,10 +281,13 @@ std::optional<ProjectionMethod> ParseProjectionMethod(std::string_view name) {
 }
 
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
-bool SolveProjection(ProjectionMethod method,
-                     const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
-                     const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &quadratics,
-                     ProjectionStep<Scalar, StateDim, ControlDim> &step) {
+bool SolveProjection(
+        ProjectionMethod method,
+        const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>>
+                &dynamics,
+        const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>>
+                &quadratics,
+        ProjectionStep<Scalar, StateDim, ControlDim> &step) {
     if (dynamics.empty() || quadratics.size() != dynamics.size() + 1) {
         return false;
     }
@@ -261,7 +296,7 @@ bool SolveProjection(ProjectionMethod method,
             return SolveRiccati(dynamics, quadratics, step);
         case ProjectionMethod::KKTEigen:
         case ProjectionMethod::KKTQdldl:
-            return SolveKkt(method, dynamics, quadratics, step);
+            return SolveKKT(method, dynamics, quadratics, step);
     }
     return false;
 }

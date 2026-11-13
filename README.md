@@ -44,6 +44,8 @@
 - 优化前，横纵向耦合示例 polishing 后违反量看起来降到了 0.049，但那是靠破坏动力学换来的（残差 0.059），轨迹实际开不出来。
 - 横纵向耦合示例的测试场景做了调整：原场景第一段窄路离起点只有约 8 m、初速 10 m/s，几何上几乎不可行；现在窄路后移到约 20 m 外，初速 8 m/s，障碍物收窄量不变。
 
+![横纵向耦合示例的两处绕障与弯道轨迹对比](docs/images/mp_obstacles.png)
+
 ![横纵向耦合示例：车身与道路边界，优化前后](docs/images/mp_lateral_before_after.png)
 
 上图中色带是 2 m 宽的车身，深色线是道路边界，浅灰是障碍物收窄处。优化前的约束按时间步取边界，车在纵向上落后参考 2～9 m，用的是别处的边界，所以车身在 s≈51 m 处越出边界 0.61 m；优化后边界按车的实际位置选取，车身始终在边界内。
@@ -379,11 +381,12 @@ mkdir -p out
 ./build/altro_fix/mp out            # 默认 Riccati，也可显式传 riccati
 ./build/altro_fix/mp out kkt-eigen  # KKT，使用 Eigen SparseLU
 ./build/altro_fix/mp out kkt-qdldl
+./build/altro_fix/mp out riccati --summary
 ```
 
 C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KKTEigen` 或 `altro::ProjectionMethod::KKTQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
 
-`Solve(...)` 返回 `altro::ProjectionStatus`，状态和控制输出保留最后接受的轨迹。两个示例都会打印投影状态。投影启动后如果未达到容差，示例仍导出近似轨迹和道路 CSV，并返回非零退出码。
+`Solve(...)` 返回 `altro::ProjectionStatus`，状态和控制输出保留最后接受的轨迹。两个示例默认关闭求解汇总，可在命令末尾加 `--summary` 查看投影状态、耗时、约束违反量和动力学残差。投影启动后如果未达到容差，示例仍会向标准错误打印提示、导出近似轨迹和道路 CSV，并返回非零退出码。
 
 ### 查看结果
 
@@ -476,7 +479,7 @@ clang-format 不在 `PATH` 中时，用 `CLANG_FORMAT=/path/to/clang-format` 指
 2. 继承 `CostFunc<T, M, N>`，实现 `Evaluate`、`Gradient`、`Hessian`，并从 `CostTermConfig` 读取参数；
 3. 继承 `Constraint<T, M, N, Equality>` 或 `Constraint<T, M, N, Inequality>`，实现约束值、梯度和 Hessian 接口；
 4. 在入口文件创建 `OCPInterface`，依次设置 `CostTermConfig`、`CostUnion`、代价项、约束项和模型；
-5. 以正确长度初始化 `Controls`，再调用 `ALTROSolver::Solve`（先 AL-iLQR，再按需 polishing；只要 AL-iLQR 时可直接用 `ALILQRSolver::Solve`）。逐轮日志默认关闭，可用 `SetVerbose(true)` 打开；汇总会按约束分别列出最大违反量；
+5. 以正确长度初始化 `Controls`，再调用 `ALTROSolver::Solve`（先 AL-iLQR，再按需 polishing；只要 AL-iLQR 时可直接用 `ALILQRSolver::Solve`）。C++ 求解器默认打印求解汇总，可用 `SetPrintSummary(false)` 关闭。用 `SetVerbose(true)` 打开逐轮日志。
 6. 需要查看结果时，用 `csv_writer.hpp` 中的 `WriteCsv` 导出，再用脚本画图。
 
 仓库目前显式实例化了 `double` 下的部分维度组合（包括 `5×1`、`4×2`、`6×2`）。如需引入新的状态/控制维度，应同时检查各模板实现文件中是否需要补充显式实例化。

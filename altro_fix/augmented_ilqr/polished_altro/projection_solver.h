@@ -37,16 +37,20 @@ struct StageQuadratic {
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
 struct ProjectionStep {
     std::vector<Eigen::Matrix<Scalar, ControlDim, 1>> control_delta;
-    std::vector<Eigen::Matrix<Scalar, ControlDim, StateDim>> feedback; // Empty for KKT.
+    // Empty for KKT.
+    std::vector<Eigen::Matrix<Scalar, ControlDim, StateDim>> feedback;
 };
 
 // The terminal quadratic contains only state terms. The output is valid on success.
 // Explicit instantiations match the three ALILQRSolver specializations.
 template<typename Scalar, unsigned StateDim, unsigned ControlDim>
-bool SolveProjection(ProjectionMethod method,
-                     const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>> &dynamics,
-                     const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>> &quadratics,
-                     ProjectionStep<Scalar, StateDim, ControlDim> &step);
+bool SolveProjection(
+        ProjectionMethod method,
+        const std::vector<LinearDynamics<Scalar, StateDim, ControlDim>>
+                &dynamics,
+        const std::vector<StageQuadratic<Scalar, StateDim, ControlDim>>
+                &quadratics,
+        ProjectionStep<Scalar, StateDim, ControlDim> &step);
 
 } // namespace altro
 

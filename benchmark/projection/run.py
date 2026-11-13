@@ -25,7 +25,7 @@ class Sample:
 
 
 def run_example(executable, output_dir, method):
-    result = subprocess.run([executable, output_dir, method], capture_output=True, text=True, check=True)
+    result = subprocess.run([executable, output_dir, method, "--summary"], capture_output=True, text=True, check=True)
 
     def match(pattern):
         found = re.search(pattern, result.stdout, re.MULTILINE)

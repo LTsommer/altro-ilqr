@@ -51,7 +51,8 @@ double Vec2d::InnerProd(const Vec2d &other) const {
  sin, cos]
 */
 Vec2d Vec2d::rotate(const double angle) const {
-    return Vec2d(x_ * cos(angle) - y_ * sin(angle), x_ * sin(angle) + y_ * cos(angle));
+    return Vec2d(x_ * cos(angle) - y_ * sin(angle),
+                 x_ * sin(angle) + y_ * cos(angle));
 }
 
 void Vec2d::SelfRotate(const double angle) {
@@ -103,9 +104,15 @@ Vec2d &Vec2d::operator/=(const double ratio) {
 }
 
 bool Vec2d::operator==(const Vec2d &other) const {
-    return (std::abs(x_ - other.x()) < kMathEpsilon && std::abs(y_ - other.y()) < kMathEpsilon);
+    return (std::abs(x_ - other.x()) < kMathEpsilon &&
+            std::abs(y_ - other.y()) < kMathEpsilon);
 }
 
 Vec2d operator*(const double ratio, const Vec2d &vec) {
     return vec * ratio;
+}
+
+std::ostream &operator<<(std::ostream &out, const Vec2d &A) {
+    out << A.x() << "," << A.y() << " ";
+    return out;
 }

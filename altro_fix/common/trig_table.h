@@ -20,7 +20,8 @@
 // The remaining error comes from the range reduction and grows with |x|, about |x| * 1e-16.
 // The table path is limited to |x| <= kMaxTableAngle (error below 4e-14 there).
 namespace trig_table {
-inline constexpr int kSize = 4096; // samples per turn, power of two so the index wraps with a mask
+// samples per turn, power of two so the index wraps with a mask
+inline constexpr int kSize = 4096;
 inline constexpr double kTwoPi = 6.283185307179586;
 inline constexpr double kStep = kTwoPi / kSize;
 inline constexpr double kInvStep = kSize / kTwoPi;
@@ -2087,7 +2088,8 @@ namespace detail {
 
 template<bool kSine>
 inline double LookupValue(double x) {
-    assert(std::abs(x) <= kMaxTableAngle && "Trig lookup requires a finite angle within the table range");
+    assert(std::abs(x) <= kMaxTableAngle &&
+           "Trig lookup requires a finite angle within the table range");
     const double turns = x * kInvStep;
     const double k = std::floor(turns + 0.5);
     const double d = (turns - k) * kStep;

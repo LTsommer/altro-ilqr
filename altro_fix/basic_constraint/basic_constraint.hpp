@@ -36,35 +36,53 @@ public:
     void UpdateConfig(const CostTermConfig &config, const bool is_lb) {
         const auto &p_bound = config.p_bound;
         size_t num_steps = p_bound.size();
-        bound_types_ = is_lb ? config.boundary_types[0] : config.boundary_types[1];
+        bound_types_ =
+                is_lb ? config.boundary_types[0] : config.boundary_types[1];
         const auto &dist = margin_ == BoundMargin::Safe
-                                   ? (is_lb ? config.left_safe_dist : config.right_safe_dist)
-                                   : (is_lb ? config.left_comfort_dist : config.right_comfort_dist);
+                                   ? (is_lb ? config.left_safe_dist
+                                            : config.right_safe_dist)
+                                   : (is_lb ? config.left_comfort_dist
+                                            : config.right_comfort_dist);
 
         a_.resize(num_steps);
         b_.resize(num_steps);
         int start_idx = is_lb ? 0 : 2; // p1: 0, p3: 2
         int lb_coeff = start_idx - 1;  // if lb: -1, rb: 1
         for (int i = 0; i < static_cast<int>(num_steps); i++) {
-            const Vector2d line_vec = p_bound[i][start_idx + 1] - p_bound[i][start_idx];
+            const Vector2d line_vec =
+                    p_bound[i][start_idx + 1] - p_bound[i][start_idx];
             const double c1 = 1.0 / line_vec.norm();
-            const double c2 = c1 * cross_prod(p_bound[i][start_idx + 1], p_bound[i][start_idx]);
-            a_[i](kXPos) = c1 * lb_coeff * (p_bound[i][start_idx + 1](kYPos) - p_bound[i][start_idx](kYPos));
-            a_[i](kYPos) = c1 * lb_coeff * (p_bound[i][start_idx](kXPos) - p_bound[i][start_idx + 1](kXPos));
-            b_[i] = lb_coeff * c2 + (i < static_cast<int>(dist.size()) ? dist[i] : 0.0);
+            const double c2 = c1 * cross_prod(p_bound[i][start_idx + 1],
+                                              p_bound[i][start_idx]);
+            a_[i](kXPos) = c1 * lb_coeff *
+                           (p_bound[i][start_idx + 1](kYPos) -
+                            p_bound[i][start_idx](kYPos));
+            a_[i](kYPos) = c1 * lb_coeff *
+                           (p_bound[i][start_idx](kXPos) -
+                            p_bound[i][start_idx + 1](kXPos));
+            b_[i] = lb_coeff * c2 +
+                    (i < static_cast<int>(dist.size()) ? dist[i] : 0.0);
         }
     }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(LateralOffsetConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(LateralOffsetConstraint));
+    }
 
-    virtual std::string GetName() const override { return std::string("LateralOffsetConstraint"); }
+    virtual std::string GetName() const override {
+        return std::string("LateralOffsetConstraint");
+    }
 
-    virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
+    virtual bool Evaluate(const int step,
+                          const State &x,
+                          const Control &u,
+                          double &val) const override {
         if (step >= a_.size()) {
             return false;
         }
 
-        if (step < bound_types_.size() && bound_types_[step] == BoundType::Default) {
+        if (step < bound_types_.size() &&
+            bound_types_[step] == BoundType::Default) {
             val = 0.0;
             return true;
         }
@@ -74,14 +92,19 @@ public:
         return true;
     }
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    [[gnu::always_inline]] virtual bool Gradient(
+            const int step,
+            const State &x,
+            const Control &u,
+            Eigen::Ref<VecX> lx,
+            Eigen::Ref<VecU> lu) const override {
         if (step >= a_.size()) {
             return false;
         }
 
         lx.setZero();
-        if (step < bound_types_.size() && bound_types_[step] == BoundType::Default) {
+        if (step < bound_types_.size() &&
+            bound_types_[step] == BoundType::Default) {
             return true;
         }
         lx(0) = a_[step](0);
@@ -140,19 +163,26 @@ public:
         return name;
     }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(SafeConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(SafeConstraint));
+    }
 
     // Raw sub-constraints g <= 0 behind the hinge, used by ALTRO polishing.
     bool RawConstraints(const int step,
                         const State &x,
                         const Control &u,
                         RawConstraintRows<T, M, N> &out) const override {
-        AppendRawConstraint<T, M, N>(line_segment_constraint_lb_, step, x, u, out);
-        AppendRawConstraint<T, M, N>(line_segment_constraint_rb_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                line_segment_constraint_lb_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                line_segment_constraint_rb_, step, x, u, out);
         return true;
     }
 
-    virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
+    virtual bool Evaluate(const int step,
+                          const State &x,
+                          const Control &u,
+                          double &val) const override {
         val = 0.0;
         if (step > steps_num_) {
             return false;
@@ -172,8 +202,11 @@ public:
     };
 
     // f(g)' = f' * g'
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > steps_num_) {
@@ -187,8 +220,10 @@ public:
 
         VecX grad_gx_lb, grad_gx_rb;
         VecU grad_gu_lb, grad_gu_rb;
-        line_segment_constraint_lb_.Gradient(step, x, u, grad_gx_lb, grad_gu_lb);
-        line_segment_constraint_rb_.Gradient(step, x, u, grad_gx_rb, grad_gu_rb);
+        line_segment_constraint_lb_.Gradient(
+                step, x, u, grad_gx_lb, grad_gu_lb);
+        line_segment_constraint_rb_.Gradient(
+                step, x, u, grad_gx_rb, grad_gu_rb);
 
         double grad_f_lb{0.0};
         double grad_f_rb{0.0};
@@ -221,8 +256,10 @@ public:
 
         VecX grad_gx_lb, grad_gx_rb;
         VecU grad_gu_lb, grad_gu_rb;
-        line_segment_constraint_lb_.Gradient(step, x, u, grad_gx_lb, grad_gu_lb);
-        line_segment_constraint_rb_.Gradient(step, x, u, grad_gx_rb, grad_gu_rb);
+        line_segment_constraint_lb_.Gradient(
+                step, x, u, grad_gx_lb, grad_gu_lb);
+        line_segment_constraint_rb_.Gradient(
+                step, x, u, grad_gx_rb, grad_gu_rb);
 
         double grad_f_lb{0.0};
         double grad_f_rb{0.0};
@@ -232,20 +269,28 @@ public:
         MatrixLXX hess_gxx_lb, hess_gxx_rb;
         MatrixLUU hess_guu_lb, hess_guu_rb;
         MatrixLXU hess_gxu_lb, hess_gxu_rb;
-        line_segment_constraint_lb_.Hessian(step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
-        line_segment_constraint_rb_.Hessian(step, x, u, hess_gxx_rb, hess_guu_rb, hess_gxu_rb);
+        line_segment_constraint_lb_.Hessian(
+                step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
+        line_segment_constraint_rb_.Hessian(
+                step, x, u, hess_gxx_rb, hess_guu_rb, hess_gxu_rb);
 
         double hess_f_lb{0.0};
         double hess_f_rb{0.0};
         one_side_cost_.Hessian(g_lb, hess_f_lb);
         one_side_cost_.Hessian(g_rb, hess_f_rb);
 
-        lxx = w_plb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() + grad_f_lb * hess_gxx_lb) +
-              w_prb_ * (hess_f_rb * grad_gx_rb * grad_gx_rb.transpose() + grad_f_rb * hess_gxx_rb);
-        luu = w_plb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() + grad_f_lb * hess_guu_lb) +
-              w_prb_ * (hess_f_rb * grad_gu_rb * grad_gu_rb.transpose() + grad_f_rb * hess_guu_rb);
-        lxu = w_plb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() + grad_f_lb * hess_gxu_lb) +
-              w_prb_ * (hess_f_rb * grad_gx_rb * grad_gu_rb.transpose() + grad_f_rb * hess_gxu_rb);
+        lxx = w_plb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() +
+                        grad_f_lb * hess_gxx_lb) +
+              w_prb_ * (hess_f_rb * grad_gx_rb * grad_gx_rb.transpose() +
+                        grad_f_rb * hess_gxx_rb);
+        luu = w_plb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_guu_lb) +
+              w_prb_ * (hess_f_rb * grad_gu_rb * grad_gu_rb.transpose() +
+                        grad_f_rb * hess_guu_rb);
+        lxu = w_plb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_gxu_lb) +
+              w_prb_ * (hess_f_rb * grad_gx_rb * grad_gu_rb.transpose() +
+                        grad_f_rb * hess_gxu_rb);
         return true;
     };
 
@@ -283,11 +328,18 @@ public:
         }
     }
 
-    virtual std::string GetName() const override { return std::string("ControlLimitConstraint"); }
+    virtual std::string GetName() const override {
+        return std::string("ControlLimitConstraint");
+    }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(ControlLimitConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(ControlLimitConstraint));
+    }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step >= step_num_) {
             cost_val = 0.0;
             return false;
@@ -296,8 +348,11 @@ public:
         return true;
     }
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > b_.size()) {
@@ -352,19 +407,26 @@ public:
         return name;
     }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(ControlConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(ControlConstraint));
+    }
 
     // Raw sub-constraints g <= 0 behind the hinge, used by ALTRO polishing.
     bool RawConstraints(const int step,
                         const State &x,
                         const Control &u,
                         RawConstraintRows<T, M, N> &out) const override {
-        AppendRawConstraint<T, M, N>(control_limit_constraint_lb_, step, x, u, out);
-        AppendRawConstraint<T, M, N>(control_limit_constraint_ub_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                control_limit_constraint_lb_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                control_limit_constraint_ub_, step, x, u, out);
         return true;
     }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step >= Constraint<T, M, N, Inequality>::Horizon()) {
             cost_val = 0.0;
             return false;
@@ -383,8 +445,11 @@ public:
         return true;
     };
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step >= Constraint<T, M, N, Inequality>::Horizon()) {
@@ -398,8 +463,10 @@ public:
 
         VecX grad_gx_lb, grad_gx_ub;
         VecU grad_gu_lb, grad_gu_ub;
-        control_limit_constraint_lb_.Gradient(step, x, u, grad_gx_lb, grad_gu_lb);
-        control_limit_constraint_ub_.Gradient(step, x, u, grad_gx_ub, grad_gu_ub);
+        control_limit_constraint_lb_.Gradient(
+                step, x, u, grad_gx_lb, grad_gu_lb);
+        control_limit_constraint_ub_.Gradient(
+                step, x, u, grad_gx_ub, grad_gu_ub);
 
         double grad_f_lb{0.0};
         double grad_f_ub{0.0};
@@ -431,8 +498,10 @@ public:
 
         VecX grad_gx_lb, grad_gx_ub;
         VecU grad_gu_lb, grad_gu_ub;
-        control_limit_constraint_lb_.Gradient(step, x, u, grad_gx_lb, grad_gu_lb);
-        control_limit_constraint_ub_.Gradient(step, x, u, grad_gx_ub, grad_gu_ub);
+        control_limit_constraint_lb_.Gradient(
+                step, x, u, grad_gx_lb, grad_gu_lb);
+        control_limit_constraint_ub_.Gradient(
+                step, x, u, grad_gx_ub, grad_gu_ub);
 
         double grad_f_lb{0.0};
         double grad_f_ub{0.0};
@@ -442,20 +511,28 @@ public:
         MatrixLXX hess_gxx_lb, hess_gxx_ub;
         MatrixLUU hess_guu_lb, hess_guu_ub;
         MatrixLXU hess_gxu_lb, hess_gxu_ub;
-        control_limit_constraint_lb_.Hessian(step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
-        control_limit_constraint_ub_.Hessian(step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
+        control_limit_constraint_lb_.Hessian(
+                step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
+        control_limit_constraint_ub_.Hessian(
+                step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
 
         double hess_f_lb{0.0};
         double hess_f_ub{0.0};
         one_side_cost_.Hessian(g_lb, hess_f_lb);
         one_side_cost_.Hessian(g_ub, hess_f_ub);
 
-        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() + grad_f_lb * hess_gxx_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() + grad_f_ub * hess_gxx_ub);
-        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() + grad_f_lb * hess_guu_lb) +
-              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() + grad_f_ub * hess_guu_ub);
-        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() + grad_f_lb * hess_gxu_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() + grad_f_ub * hess_gxu_ub);
+        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() +
+                        grad_f_lb * hess_gxx_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() +
+                        grad_f_ub * hess_gxx_ub);
+        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_guu_lb) +
+              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_guu_ub);
+        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_gxu_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_gxu_ub);
 
         return true;
     };
@@ -479,11 +556,18 @@ public:
           yaw_(config.yaw),
           step_num_(config.steps.size()) {}
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(HeadingTrackConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(HeadingTrackConstraint));
+    }
 
-    virtual std::string GetName() const override { return std::string("HeadingTrackConstraint"); }
+    virtual std::string GetName() const override {
+        return std::string("HeadingTrackConstraint");
+    }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step > step_num_) {
             cost_val = 0.0;
             return false;
@@ -492,8 +576,11 @@ public:
         return true;
     }
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > step_num_) {
@@ -538,9 +625,13 @@ public:
         step_num_ = config.steps.size();
     }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(HeadingConstraint)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(HeadingConstraint));
+    }
 
-    virtual std::string GetName() const override { return std::string("HeadingConstraint"); }
+    virtual std::string GetName() const override {
+        return std::string("HeadingConstraint");
+    }
 
     // Raw sub-constraints g <= 0 behind the hinge, used by ALTRO polishing.
     bool RawConstraints(const int step,
@@ -552,7 +643,10 @@ public:
         return true;
     }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step > step_num_) {
             cost_val = 0.0;
             return false;
@@ -570,8 +664,11 @@ public:
         return true;
     }
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > step_num_) {
@@ -630,20 +727,28 @@ public:
         MatrixLXX hess_gxx_lb, hess_gxx_ub;
         MatrixLUU hess_guu_lb, hess_guu_ub;
         MatrixLXU hess_gxu_lb, hess_gxu_ub;
-        heading_track_lb_.Hessian(step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
-        heading_track_ub_.Hessian(step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
+        heading_track_lb_.Hessian(
+                step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
+        heading_track_ub_.Hessian(
+                step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
 
         double hess_f_lb{0.0};
         double hess_f_ub{0.0};
         one_side_cost_.Hessian(g_lb, hess_f_lb);
         one_side_cost_.Hessian(g_ub, hess_f_ub);
 
-        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() + grad_f_lb * hess_gxx_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() + grad_f_ub * hess_gxx_ub);
-        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() + grad_f_lb * hess_guu_lb) +
-              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() + grad_f_ub * hess_guu_ub);
-        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() + grad_f_lb * hess_gxu_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() + grad_f_ub * hess_gxu_ub);
+        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() +
+                        grad_f_lb * hess_gxx_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() +
+                        grad_f_ub * hess_gxx_ub);
+        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_guu_lb) +
+              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_guu_ub);
+        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_gxu_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_gxu_ub);
         return true;
     }
 
@@ -679,11 +784,18 @@ public:
     }
     ~KappaLimitsConstraint() = default;
 
-    std::string GetName() const override { return std::string("KappaLimitsConstraint"); }
+    std::string GetName() const override {
+        return std::string("KappaLimitsConstraint");
+    }
 
-    std::type_index GetTypeIndex() const override { return std::type_index(typeid(KappaLimitsConstraint)); }
+    std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(KappaLimitsConstraint));
+    }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step > steps_num_) {
             return false;
         }
@@ -691,8 +803,11 @@ public:
         return true;
     }
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > steps_num_) {
@@ -742,21 +857,30 @@ public:
 
     ~KappaConstraint() = default;
 
-    std::string GetName() const override { return std::string("KappaConstraint"); }
+    std::string GetName() const override {
+        return std::string("KappaConstraint");
+    }
 
-    std::type_index GetTypeIndex() const override { return std::type_index(typeid(KappaConstraint)); }
+    std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(KappaConstraint));
+    }
 
     // Raw sub-constraints g <= 0 behind the hinge, used by ALTRO polishing.
     bool RawConstraints(const int step,
                         const State &x,
                         const Control &u,
                         RawConstraintRows<T, M, N> &out) const override {
-        AppendRawConstraint<T, M, N>(kappa_limit_constraint_lb_, step, x, u, out);
-        AppendRawConstraint<T, M, N>(kappa_limit_constraint_ub_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                kappa_limit_constraint_lb_, step, x, u, out);
+        AppendRawConstraint<T, M, N>(
+                kappa_limit_constraint_ub_, step, x, u, out);
         return true;
     }
 
-    bool Evaluate(const int step, const State &x, const Control &u, double &cost_val) const override {
+    bool Evaluate(const int step,
+                  const State &x,
+                  const Control &u,
+                  double &cost_val) const override {
         if (step > steps_num_) {
             cost_val = 0.0;
             return false;
@@ -774,8 +898,11 @@ public:
         return true;
     };
 
-    bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    bool Gradient(const int step,
+                  const State &x,
+                  const Control &u,
+                  Eigen::Ref<VecX> lx,
+                  Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > steps_num_) {
@@ -833,20 +960,28 @@ public:
         MatrixLXX hess_gxx_lb, hess_gxx_ub;
         MatrixLUU hess_guu_lb, hess_guu_ub;
         MatrixLXU hess_gxu_lb, hess_gxu_ub;
-        kappa_limit_constraint_lb_.Hessian(step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
-        kappa_limit_constraint_ub_.Hessian(step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
+        kappa_limit_constraint_lb_.Hessian(
+                step, x, u, hess_gxx_lb, hess_guu_lb, hess_gxu_lb);
+        kappa_limit_constraint_ub_.Hessian(
+                step, x, u, hess_gxx_ub, hess_guu_ub, hess_gxu_ub);
 
         double hess_f_lb{0.0};
         double hess_f_ub{0.0};
         one_side_cost_.Hessian(g_lb, hess_f_lb);
         one_side_cost_.Hessian(g_ub, hess_f_ub);
 
-        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() + grad_f_lb * hess_gxx_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() + grad_f_ub * hess_gxx_ub);
-        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() + grad_f_lb * hess_guu_lb) +
-              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() + grad_f_ub * hess_guu_ub);
-        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() + grad_f_lb * hess_gxu_lb) +
-              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() + grad_f_ub * hess_gxu_ub);
+        lxx = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gx_lb.transpose() +
+                        grad_f_lb * hess_gxx_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gx_ub.transpose() +
+                        grad_f_ub * hess_gxx_ub);
+        luu = w_clb_ * (hess_f_lb * grad_gu_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_guu_lb) +
+              w_cub_ * (hess_f_ub * grad_gu_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_guu_ub);
+        lxu = w_clb_ * (hess_f_lb * grad_gx_lb * grad_gu_lb.transpose() +
+                        grad_f_lb * hess_gxu_lb) +
+              w_cub_ * (hess_f_ub * grad_gx_ub * grad_gu_ub.transpose() +
+                        grad_f_ub * hess_gxu_ub);
 
         return true;
     };
@@ -880,16 +1015,23 @@ public:
 
     ~ComfortDistanceCostFunc() = default;
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(ComfortDistanceCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(ComfortDistanceCostFunc));
+    }
 
     void UpdateConfig(const CostTermConfig &config) override {
         lb_.UpdateConfig(config, true);
         rb_.UpdateConfig(config, false);
     }
 
-    std::string GetName() const override { return std::string("ComfortDistanceCostFunc"); }
+    std::string GetName() const override {
+        return std::string("ComfortDistanceCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override {
+    virtual bool Evaluate(const int step,
+                          const State &x,
+                          const Control &u,
+                          double &val) const override {
         val = 0.0;
         if (step > horizon) {
             return false;
@@ -903,8 +1045,11 @@ public:
         return true;
     };
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override {
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override {
         lx.setZero();
         lu.setZero();
         if (step > horizon) {

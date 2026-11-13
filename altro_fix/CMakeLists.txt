@@ -32,7 +32,7 @@ file(GLOB_RECURSE M "model/*.h" "model/*.cpp" "model/*.hpp" "model/*.cc")
 file(GLOB_RECURSE S "augmented_ilqr/*.h" "augmented_ilqr/*.cpp" "augmented_ilqr/*.hpp" "augmented_ilqr/*.cc")
 file(GLOB_RECURSE AL "augmented_ilqr/polished_altro/*.h" "augmented_ilqr/polished_altro/*.cpp"
         "augmented_ilqr/polished_altro/*.hpp" "augmented_ilqr/polished_altro/*.cc")
-file(GLOB_RECURSE MP "motion_planning/*.h" "motion_planning/*.cpp" "motion_planning/*.hpp"
+file(GLOB_RECURSE MP "motion_planning/*.h" "motion_planning/*.cpp" "motion_planning/*.hpp" "motion_planning/*.cc"
         "motion_planning/constraints/*.h" "motion_planning/constraints/*.hpp" "motion_planning/constraints/*.cpp"
         "motion_planning/cost_functions/*.h" "motion_planning/cost_functions/*.hpp" "motion_planning/cost_functions/*.cpp")
 

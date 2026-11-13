@@ -3,7 +3,7 @@ BasedOnStyle: Google
 IndentWidth: 4
 ContinuationIndentWidth: 8
 AccessModifierOffset: -4
-ColumnLimit: 120
+ColumnLimit: 80
 DerivePointerAlignment: false
 PointerAlignment: Right
 AllowShortFunctionsOnASingleLine: Inline
