@@ -755,8 +755,8 @@ private:
   the solver evaluates every step many times with positions that barely move, so each step keeps
   its last s and refines it with a few local Newton steps on the reference curve r(s):
       s <- s + tangent(s) . (p - r(s)) / (1 - kappa(s) * l)
-  This gives the exact projection; the global search is only used for the first evaluation or
-  when the local iteration moves too far.
+  This approximates the closest-point projection using arc-length geometry.
+  The global search is used for the first evaluation or when the local iteration moves too far.
  */
 class SpeedLimitBySConstraint final
     : public Constraint<double, 6, 2, Inequality> {
@@ -788,7 +788,8 @@ public:
                   const Control &u,
                   double &val) const override;
 
-    // dg/dv = 1; dg/d(x, y) = -dv_lim/ds * ds/d(x, y), ds/d(x, y) = tangent / (1 - kappa * l).
+    // dg/dv = 1. The position gradient uses the local Frenet approximation
+    // ds/d(x, y) = tangent / (1 - kappa * l).
     bool Gradient(const int step,
                   const State &x,
                   const Control &u,
@@ -809,8 +810,8 @@ private:
         double ds_dy = 0.0;
     };
 
-    // Exact projection of the position onto the reference line, warm-started from the
-    // previous s of this step. Returns false if it cannot be projected at all.
+    // Local projection and approximate position sensitivity, warm-started
+    // from the previous s at this step.
     bool Project(const int step, const State &x, Projection &p) const;
 
     // v_lim(s) and its slope dv_lim/ds.

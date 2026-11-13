@@ -65,6 +65,8 @@ private:
  */
 template<typename T, unsigned M, unsigned int N>
 class YawRateCostFunc final : public CostFunc<T, M, N> {
+    static_assert(N > UIndex::W, "YawRateCostFunc requires a yaw-rate control");
+
 public:
     OCP_VARIABLES(T, M, N)
     YawRateCostFunc(const CostTermConfig &config)
@@ -204,6 +206,10 @@ private:
  * */
 template<typename T, unsigned M, unsigned int N>
 class CurvatureCostFunc final : public CostFunc<T, M, N> {
+    static_assert(M > kDkappa && N > kDDkappa,
+                  "CurvatureCostFunc requires curvature derivative states and "
+                  "control");
+
 public:
     OCP_VARIABLES(T, M, N);
     CurvatureCostFunc(const CostTermConfig &config)
@@ -255,6 +261,10 @@ private:
  */
 template<typename T, unsigned M, unsigned int N>
 class LateralComfortCostFunc final : public CostFunc<T, M, N> {
+    static_assert(
+            M > kDkappa,
+            "LateralComfortCostFunc requires a curvature derivative state");
+
 public:
     OCP_VARIABLES(T, M, N);
     LateralComfortCostFunc(const CostTermConfig &config)

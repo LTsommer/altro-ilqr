@@ -64,7 +64,11 @@ target_link_libraries(test_constraint PRIVATE altro_solver)
 add_executable(test_projection test_projection.cpp)
 target_link_libraries(test_projection PRIVATE projection_solver)
 
-foreach(target IN ITEMS projection_solver altro_solver_assembly altro_solver alilqr mp test_constraint test_projection)
+add_executable(test_derivatives test_derivatives.cpp)
+target_link_libraries(test_derivatives PRIVATE altro_solver)
+
+foreach(target IN ITEMS projection_solver altro_solver_assembly altro_solver alilqr mp
+        test_constraint test_projection test_derivatives)
     target_compile_options(${target} PRIVATE
             $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall>
             $<$<CXX_COMPILER_ID:MSVC>:/W3>)
@@ -74,6 +78,9 @@ include(CTest)
 if(BUILD_TESTING)
     add_test(NAME constraints COMMAND test_constraint)
     add_test(NAME projection COMMAND test_projection)
+    add_test(NAME derivatives COMMAND test_derivatives)
+    add_test(NAME derivatives-yaw-rate COMMAND test_derivatives yaw-rate)
+    add_test(NAME derivatives-curved-speed-limit COMMAND test_derivatives curved-speed-limit)
     if(UNIX)
         foreach(case IN ITEMS missing-terminal-boundary missing-terminal-boundary-update
                 missing-boundary-endpoints missing-cost-union invalid-step-size

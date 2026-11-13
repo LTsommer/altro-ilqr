@@ -513,7 +513,7 @@ clang-format 不在 `PATH` 中时，用 `CLANG_FORMAT=/path/to/clang-format` 指
 
 新增模型、代价或约束时，建议沿用现有接口，不要直接修改求解器主循环：
 
-1. 继承 `ModelBase<T, M, N>`，实现 `ForwardCalculation`、`JacobianX`、`JacobianU`；手写的 Jacobian、梯度与 Hessian 建议用中心差分逐项核对，误差应在 1e-6 以内（铰链或分段函数的拐点处除外）；
+1. 继承 `ModelBase<T, M, N>`，实现 `ForwardCalculation`、`JacobianX`、`JacobianU`。手写的 Jacobian、梯度与 Hessian 可在光滑区间用中心差分逐项核对，按各自的计算契约和数值尺度设置绝对及相对容差。近似导数应注明适用范围，分段交界处分别检查两侧；
 2. 继承 `CostFunc<T, M, N>`，实现 `Evaluate`、`Gradient`、`Hessian`，并从 `CostTermConfig` 读取参数；
 3. 继承 `Constraint<T, M, N, Equality>` 或 `Constraint<T, M, N, Inequality>`，实现约束值、梯度和 Hessian 接口；
 4. 在入口文件创建 `OCPInterface`，依次设置 `CostTermConfig`、`CostUnion`、代价项、约束项和模型；
