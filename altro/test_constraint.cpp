@@ -3,6 +3,7 @@
 //
 #include <iostream>
 #include "model/smooth_kappa_model.h"
+#include "model/heading.h"
 #include "ilqr_system_declaration.hpp"
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_terms.h"
@@ -19,6 +20,8 @@
 #include <string>
 #include <memory>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 
 using std::cout;
 using std::endl;
@@ -61,7 +64,115 @@ void test_calculus() {
 
 void test_model() {}
 
-int main() {
+namespace {
+
+using Boundary = LateralOffsetConstraint<double, 5, 1>;
+using Safety = SafeConstraint<double, 5, 1>;
+
+CostTermConfig MakeSafetyConfig() {
+    CostTermConfig config{};
+    config.steps = {1.0};
+    config.p_bound.assign(2, {{0, 1}, {1, 1}, {0, -1}, {1, -1}});
+    config.boundary_types[0] = {BoundType::Default, BoundType::Others};
+    config.weights.at(WeightPlb) = 1.0;
+    config.weights.at(WeightPrb) = 1.0;
+
+    return config;
+}
+
+bool CheckSafetyBoundaryContract() {
+    const auto config = MakeSafetyConfig();
+    const Boundary left(config, true);
+    Boundary::State x = Boundary::State::Zero();
+    x(kYPos) = 1.25;
+    const Boundary::Control u = Boundary::Control::Zero();
+    Boundary::VecX lx = Boundary::VecX::Constant(5.0);
+    Boundary::VecU lu = Boundary::VecU::Constant(7.0);
+    if (!left.Gradient(0, x, u, lx, lu) || !lx.isZero() || !lu.isZero()) {
+        std::cerr << "Default boundary did not write both zero gradients\n";
+        return false;
+    }
+
+    Safety safety(config);
+    RawConstraintRows<double, 5, 1> rows;
+    double residual = 0.0;
+    if (!safety.Gradient(0, x, u, lx, lu) || !lx.isZero() || !lu.isZero() ||
+        !safety.Evaluate(1, x, u, residual) || residual != 0.25 ||
+        !safety.Gradient(1, x, u, lx, lu) ||
+        !lx.isApprox(Boundary::VecX::Unit(kYPos)) || !lu.isZero() ||
+        !safety.RawConstraints(1, x, u, rows) || rows.size() != 2 || rows[0].g != 0.25 ||
+        safety.Evaluate(2, x, u, residual)) {
+        std::cerr << "Safety boundary did not distinguish Default, terminal and out-of-range steps\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool CheckCostUnionAccessor() {
+    OCPInterface<double, 5, 1> problem;
+    const CostTermConfig config{};
+    problem.SetConfig(config);
+    problem.SetCostUnion(std::make_unique<CostUnion<double, 5, 1>>(config));
+    if (&problem.GetCostUnion() != problem.GetCostUnionPtr().get()) {
+        std::cerr << "Cost union accessor did not return the owned instance\n";
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+    if (argc == 2) {
+        const std::string test_case = argv[1];
+        if (test_case == "missing-terminal-boundary") {
+            auto config = MakeSafetyConfig();
+            config.p_bound.pop_back();
+            const Safety incomplete(config);
+        } else if (test_case == "missing-terminal-boundary-update") {
+            auto config = MakeSafetyConfig();
+            Safety safety(config);
+            config.p_bound.pop_back();
+            safety.UpdateConfig(config);
+        } else if (test_case == "missing-boundary-endpoints") {
+            auto config = MakeSafetyConfig();
+            Safety safety(config);
+            config.p_bound.back().pop_back();
+            safety.UpdateConfig(config);
+        } else if (test_case == "missing-cost-union") {
+            const OCPInterface<double, 5, 1> problem{};
+            (void)problem.GetCostUnion();
+        } else if (test_case == "invalid-step-size") {
+            ALILQRSolver<double, 5, 1> solver(nullptr, {0.0});
+        } else if (test_case == "invalid-initial-heading") {
+            (void)vehicle_heading::PrepareInitialHeading(1025.0);
+        } else if (test_case == "missing-comfort-acceleration") {
+            CostTermConfig config{};
+            config.velocity = {1.0};
+            const LateralComfortCostFunc<double, 5, 1> cost(config);
+        } else if (test_case == "nonfinite-initial-rollout") {
+            using Model = SmoothKappaModel;
+            auto problem = std::make_unique<OCPInterface<double, 5, 1>>();
+            CostTermConfig config{};
+            config.steps = {1.0};
+            problem->SetConfig(config);
+            problem->SetModel(std::make_unique<Model>());
+            problem->SetCostUnion(std::make_unique<CostUnion<double, 5, 1>>(config));
+            ALILQRSolver<double, 5, 1> solver(std::move(problem), config.steps);
+            Model::States x_out;
+            Model::Controls u_out;
+            Model::State x = Model::State::Zero();
+            x(kXPos) = std::numeric_limits<double>::quiet_NaN();
+            solver.Solve(x, {Model::Control::Zero()}, x_out, u_out);
+        } else {
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
+    if (!CheckSafetyBoundaryContract() || !CheckCostUnionAccessor()) {
+        return EXIT_FAILURE;
+    }
     test_calculus();
     bool visualize = false;
     vector<double> centerline_x{

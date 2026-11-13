@@ -2,11 +2,13 @@
 // Created by LTsommer on 2024/5/30.
 //
 
-#ifndef CILQR_OCP_PROBLEM_HPP
-#define CILQR_OCP_PROBLEM_HPP
+#ifndef ALTRO_OCP_PROBLEM_HPP
+#define ALTRO_OCP_PROBLEM_HPP
 
 #include "model/model.h"
 #include "augmented_ilqr/cost_calc.h"
+#include <cassert>
+#include <cstdlib>
 #include <memory>
 
 template<typename T, unsigned int M, unsigned int N>
@@ -25,7 +27,13 @@ public:
 
     const CostUnionPtr<T, M, N> &GetCostUnionPtr() const { return cost_union_; };
 
-    CostUnion<T, M, N> GetCostUnion() const { return *cost_union_; }
+    const CostUnion<T, M, N> &GetCostUnion() const {
+        assert(cost_union_ != nullptr);
+        if (!cost_union_) {
+            std::abort();
+        }
+        return *cost_union_;
+    }
 
     void SetModel(std::unique_ptr<ModelBase<T, M, N>> &&model) { model_.swap(model); }
 
@@ -63,4 +71,4 @@ protected:
     CostTermConfig config_;
 };
 
-#endif //CILQR_OCP_PROBLEM_HPP
+#endif //ALTRO_OCP_PROBLEM_HPP

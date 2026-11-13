@@ -2,8 +2,8 @@
 // Created by LTsommer on 2024/6/20.
 //
 
-#ifndef ALILQR_CONSTRAINT_HPP
-#define ALILQR_CONSTRAINT_HPP
+#ifndef ALTRO_CONSTRAINT_HPP
+#define ALTRO_CONSTRAINT_HPP
 
 #include "cost_function/cost_function.hpp"
 #include "cost_function/cost_term_config.hpp"
@@ -106,8 +106,6 @@ public:
                          Eigen::Ref<MatrixLUU> luu,
                          Eigen::Ref<MatrixLXU> lxu) const override = 0;
 
-    bool HasHessian() { return false; }
-
     // The smooth sub-constraints g_i(x, u) <= 0 this constraint is built from.
     // Composite constraints of the form w_lb * max(g_lb, 0) + w_ub * max(g_ub, 0) have a zero
     // gradient on the feasible side, so ALTRO polishing needs the raw g_i to also hold
@@ -131,7 +129,7 @@ public:
 
     void SetHorizon(const int horizon) { horizon_ = horizon; }
 
-    const int Horizon() const { return horizon_; }
+    int Horizon() const { return horizon_; }
 
 protected:
     int horizon_;
@@ -140,4 +138,4 @@ protected:
 template<typename T, unsigned M, unsigned N, class ConsType>
 using ConstraintPtr = std::unique_ptr<Constraint<T, M, N, ConsType>>;
 
-#endif //ALILQR_CONSTRAINT_HPP
+#endif //ALTRO_CONSTRAINT_HPP

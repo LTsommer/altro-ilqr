@@ -6,6 +6,8 @@
 #include "clock.hpp"
 #include "common/math_utils.h"
 #include <algorithm>
+#include <cassert>
+#include <cstdlib>
 #include <cmath>
 #include <numeric>
 #include <limits>
@@ -23,9 +25,8 @@ void ALILQRSolver<T, M, N>::Solve(const State &x0,
     // inf in x0, u0 or the resulting states / cost) there is nothing valid to return.
     const State initial_state = Problem().GetModel()->PrepareInitialState(x0);
     if (!std::isfinite(InitTraj(initial_state, u0, ilqr_state.get()))) {
-        throw std::runtime_error(
-                "ALILQRSolver: initial rollout is not finite or violates the "
-                "model input range");
+        assert(false && "ALILQRSolver: initial rollout must be finite and within the model input range");
+        std::abort();
     }
     GenerateTrajectory(ilqr_state.get());
     x_res_seq = ilqr_state->x_seq_;
@@ -692,10 +693,8 @@ ALILQRSolver<T, M, N>::ALILQRSolver(
     : problem_(std::move(ocp_interface)), step_sizes_(steps) {
     for (int t = 0; t < static_cast<int>(step_sizes_.size()); ++t) {
         if (!(std::isfinite(step_sizes_[t]) && step_sizes_[t] > 0.0)) {
-            throw std::invalid_argument("ALILQRSolver: step size " +
-                                        std::to_string(t) +
-                                        " must be finite and positive, got " +
-                                        std::to_string(step_sizes_[t]));
+            assert(false && "ALILQRSolver: step sizes must be finite and positive");
+            std::abort();
         }
     }
 }

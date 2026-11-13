@@ -11,7 +11,8 @@
 #include "cost_function/cost_term_config.hpp"
 #include "constraint_definition/constraint_formulation.h"
 #include <memory>
-#include <stdexcept>
+#include <cassert>
+#include <cstdlib>
 
 /*
   J_acc = 1/2 * w_acc * acc^2
@@ -263,9 +264,8 @@ public:
           acceleration_(config.acceleration) {
         // Both references are read at every node, the terminal one included.
         if (acceleration_.size() < velocity_.size()) {
-            throw std::invalid_argument(
-                    "LateralComfortCostFunc: config.acceleration needs one "
-                    "entry per node");
+            assert(false && "LateralComfortCostFunc: config.acceleration needs one entry per node");
+            std::abort();
         }
         cross_coeff_.resize(velocity_.size());
         for (int i = 0; i < static_cast<int>(velocity_.size()); i++) {
