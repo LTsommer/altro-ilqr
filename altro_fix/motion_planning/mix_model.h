@@ -46,26 +46,24 @@ public:
     MixModel() = default;
     ~MixModel() = default;
 
-    State PrepareInitialState(const State &x) const override {
-        State prepared = x;
-        prepared(mTheta) = vehicle_heading::PrepareInitialHeading(x(mTheta));
-        return prepared;
-    }
+    State PrepareInitialState(const State &x) const override;
 
-    State StateDifference(const State &x, const State &reference) const override {
-        State delta = x - reference;
-        delta(mTheta) = AngleDifference(x(mTheta), reference(mTheta));
-        return delta;
-    }
+    State StateDifference(const State &x,
+                          const State &reference) const override;
 
-    inline A JacobianX(const State &x, const Control &u, const double dt) const override {
+    inline A JacobianX(const State &x,
+                       const Control &u,
+                       const double dt) const override {
         A fx;
         fx.setIdentity();
         // theta / v / a rows: exact derivatives of the closed-form updates.
         // Note: integer literals like 1/6 evaluate to 0 in C++, so use floating-point constants.
-        fx(mTheta, mKappa) = x(mVel) * dt + 0.5 * x(mAcc) * sqr<double>(dt) + (1.0 / 6.0) * u(mJerk) * cube<double>(dt);
-        fx(mTheta, mVel) = x(mKappa) * dt + 0.5 * u(mDotKappa) * sqr<double>(dt);
-        fx(mTheta, mAcc) = 0.5 * x(mKappa) * sqr<double>(dt) + (1.0 / 3.0) * u(mDotKappa) * cube<double>(dt);
+        fx(mTheta, mKappa) = x(mVel) * dt + 0.5 * x(mAcc) * sqr<double>(dt) +
+                             (1.0 / 6.0) * u(mJerk) * cube<double>(dt);
+        fx(mTheta, mVel) =
+                x(mKappa) * dt + 0.5 * u(mDotKappa) * sqr<double>(dt);
+        fx(mTheta, mAcc) = 0.5 * x(mKappa) * sqr<double>(dt) +
+                           (1.0 / 3.0) * u(mDotKappa) * cube<double>(dt);
         fx(mVel, mAcc) = dt;
 
         // x / y rows: derivatives of the same Gauss-Legendre position increment used in
@@ -75,7 +73,8 @@ public:
         const P p = PositionPartials(x, u, dt);
         for (const int r : {mXPos, mYPos}) {
             const std::array<double, 4> &g = r == mXPos ? p.dx : p.dy;
-            fx.row(r) = g[P::kTheta1] * fx.row(mTheta) + g[P::kVel1] * fx.row(mVel);
+            fx.row(r) =
+                    g[P::kTheta1] * fx.row(mTheta) + g[P::kVel1] * fx.row(mVel);
             fx(r, r) += 1.0;
             fx(r, mTheta) += g[P::kTheta0];
             fx(r, mVel) += g[P::kVel0];
@@ -83,13 +82,18 @@ public:
         return fx;
     }
 
-    inline B JacobianU(const State &x, const Control &u, const double dt) const override {
+    inline B JacobianU(const State &x,
+                       const Control &u,
+                       const double dt) const override {
         B fu;
         fu.setZero();
-        fu(mTheta, mJerk) = ((1.0 / 6.0) * x(mKappa) + 0.125 * u(mDotKappa) * dt) * cube<double>(dt);
+        fu(mTheta, mJerk) =
+                ((1.0 / 6.0) * x(mKappa) + 0.125 * u(mDotKappa) * dt) *
+                cube<double>(dt);
         // d(theta)/d(dkappa) = 1/2 v dt^2 + 1/3 a dt^3 + 1/8 j dt^4 (the a-term was missing)
-        fu(mTheta, mDotKappa) =
-                (0.5 * x(mVel) + (1.0 / 3.0) * x(mAcc) * dt + 0.125 * u(mJerk) * sqr<double>(dt)) * sqr<double>(dt);
+        fu(mTheta, mDotKappa) = (0.5 * x(mVel) + (1.0 / 3.0) * x(mAcc) * dt +
+                                 0.125 * u(mJerk) * sqr<double>(dt)) *
+                                sqr<double>(dt);
         fu(mKappa, mDotKappa) = dt;
         fu(mVel, mJerk) = 0.5 * sqr<double>(dt);
         fu(mAcc, mJerk) = dt;
@@ -97,12 +101,16 @@ public:
         // x / y depend on u only through theta_{k+1} and v_{k+1}
         using P = PlanarPositionPartials;
         const P p = PositionPartials(x, u, dt);
-        fu.row(mXPos) = p.dx[P::kTheta1] * fu.row(mTheta) + p.dx[P::kVel1] * fu.row(mVel);
-        fu.row(mYPos) = p.dy[P::kTheta1] * fu.row(mTheta) + p.dy[P::kVel1] * fu.row(mVel);
+        fu.row(mXPos) = p.dx[P::kTheta1] * fu.row(mTheta) +
+                        p.dx[P::kVel1] * fu.row(mVel);
+        fu.row(mYPos) = p.dy[P::kTheta1] * fu.row(mTheta) +
+                        p.dy[P::kVel1] * fu.row(mVel);
         return fu;
     }
 
-    inline State ForwardCalculation(const State &x, const Control &u, const double dt) const override {
+    inline State ForwardCalculation(const State &x,
+                                    const Control &u,
+                                    const double dt) const override {
         const double heading_change = HeadingChange(x, u, dt);
         if (!vehicle_heading::IsSupportedAngle(heading_change)) {
             return State::Constant(std::numeric_limits<double>::quiet_NaN());
@@ -112,8 +120,8 @@ public:
         state(mKappa) = x(mKappa) + u(mDotKappa) * dt;
         state(mVel) = NextVel(x, u, dt);
         state(mAcc) = x(mAcc) + u(mJerk) * dt;
-        const Eigen::Vector2d displacement =
-                IntegratePlanarPosition(x(mTheta), heading_change, x(mVel), state(mVel), dt);
+        const Eigen::Vector2d displacement = IntegratePlanarPosition(
+                x(mTheta), heading_change, x(mVel), state(mVel), dt);
         state(mXPos) = x(mXPos) + displacement.x();
         state(mYPos) = x(mYPos) + displacement.y();
         return state;
@@ -122,32 +130,24 @@ public:
     void set_traj_info(const vector<double> &t,
                        const vector<double> &s,
                        const vector<double> &v,
-                       const vector<double> &y) {
-        sy.set_points(s, y);
-        ts.set_points(t, s);
-        tv.set_points(t, v);
-    }
+                       const vector<double> &y);
 
     void SetTimer(const double timer) override { timer_ = timer; }
 
-    void UpdateTimer(const double dt) override { timer_ += dt; }
+    void UpdateTimer(const double dt) override;
 
 private:
     // The physical turn int_0^dt kappa(t) v(t) dt, before wrapping the next heading.
-    static double HeadingChange(const State &x, const Control &u, const double dt) {
-        return x(mKappa) * x(mVel) * dt + 0.5 * (x(mKappa) * x(mAcc) + x(mVel) * u(mDotKappa)) * sqr<double>(dt) +
-               (1.0 / 3.0) * (0.5 * x(mKappa) * u(mJerk) + x(mAcc) * u(mDotKappa)) * cube<double>(dt) +
-               0.125 * u(mDotKappa) * u(mJerk) * cube<double>(dt) * dt;
-    }
+    static double HeadingChange(const State &x,
+                                const Control &u,
+                                const double dt);
 
-    static double NextVel(const State &x, const Control &u, const double dt) {
-        return x(mVel) + x(mAcc) * dt + 0.5 * u(mJerk) * sqr<double>(dt);
-    }
+    static double NextVel(const State &x, const Control &u, const double dt);
 
     // Partials of the position displacement computed by ForwardCalculation.
-    static PlanarPositionPartials PositionPartials(const State &x, const Control &u, const double dt) {
-        return IntegratePlanarPositionPartials(x(mTheta), HeadingChange(x, u, dt), x(mVel), NextVel(x, u, dt), dt);
-    }
+    static PlanarPositionPartials PositionPartials(const State &x,
+                                                   const Control &u,
+                                                   const double dt);
 
     spline sy;
     spline ts;

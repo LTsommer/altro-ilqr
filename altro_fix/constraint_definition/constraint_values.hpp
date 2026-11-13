@@ -13,8 +13,9 @@ template<typename T, unsigned M, unsigned N, class ConsType>
 class ConstraintValue {
 public:
     static constexpr double kDefaultPenalty = 1.0;
-    static constexpr double kDefaultPenaltyFactor = 10.0; // ALTRO paper default (was 2.0)
-    static constexpr double kMaxPenalty = 1.0e8;          // penalties stop growing here
+    // ALTRO paper default (was 2.0)
+    static constexpr double kDefaultPenaltyFactor = 10.0;
+    static constexpr double kMaxPenalty = 1.0e8; // penalties stop growing here
     static constexpr double kDefaultLambda = 1.0e-2;
     static constexpr int dim = Eigen::Dynamic;
 
@@ -31,7 +32,8 @@ public:
 
     void UpdateDual() {
         for (int t = 0; t < horizon_; ++t) {
-            ConsType::Name::UpdateDual(cons_val_mat_(t), penalty_(t), lambda_(t));
+            ConsType::Name::UpdateDual(
+                    cons_val_mat_(t), penalty_(t), lambda_(t));
         }
     }
 
@@ -49,9 +51,13 @@ public:
         }
     }
 
-    bool AnyPenaltyAtMax() const { return (penalty_.array() >= kMaxPenalty).any(); }
+    bool AnyPenaltyAtMax() const {
+        return (penalty_.array() >= kMaxPenalty).any();
+    }
 
-    void UpdateConfig(const CostTermConfig &config) { cons_ptr_->UpdateConfig(config); }
+    void UpdateConfig(const CostTermConfig &config) {
+        cons_ptr_->UpdateConfig(config);
+    }
 
     void SetPenalty(const double penalty) { penalty_.setConstant(penalty); }
 
@@ -61,9 +67,13 @@ public:
 
     double GetPenalty(const int step) const { return penalty_(step); }
 
-    double GetMaxPenalty() const { return penalty_.template lpNorm<Eigen::Infinity>(); }
+    double GetMaxPenalty() const {
+        return penalty_.template lpNorm<Eigen::Infinity>();
+    }
 
-    void LoadConstraint(ConstraintPtr<T, M, N, ConsType> &&cons) { cons_ptr_.swap(cons); };
+    void LoadConstraint(ConstraintPtr<T, M, N, ConsType> &&cons) {
+        cons_ptr_.swap(cons);
+    };
 
     double ConsVal() { return cons_val_; }
 
@@ -75,7 +85,9 @@ public:
 
     // Penalty after applying the active-set mask, evaluated at the last Evaluate() value.
     double ActivePenalty(const int step) const {
-        return ConsType::Name::IsActive(cons_val_, lambda_(step)) ? penalty_(step) : 0.0;
+        return ConsType::Name::IsActive(cons_val_, lambda_(step))
+                       ? penalty_(step)
+                       : 0.0;
     }
 
     bool Evaluate(const int step, const State &x, const Control &u) {
@@ -85,7 +97,8 @@ public:
         }
         cons_val_mat_(step) = cons_val_;
         if (success) {
-            ctg_val_ = (lambda_(step) + 0.5 * cons_val_ * ActivePenalty(step)) * cons_val_;
+            ctg_val_ = (lambda_(step) + 0.5 * cons_val_ * ActivePenalty(step)) *
+                       cons_val_;
         } else {
             ctg_val_ = 0.0;
         }
@@ -103,12 +116,19 @@ public:
         cons_ptr_->Gradient(step, x, u, grad_x_, grad_u_);
     }
 
-    bool RawConstraints(const int step, const State &x, const Control &u, RawConstraintRows<T, M, N> &out) const {
+    bool RawConstraints(const int step,
+                        const State &x,
+                        const Control &u,
+                        RawConstraintRows<T, M, N> &out) const {
         return cons_ptr_->RawConstraints(step, x, u, out);
     }
 
     // Largest violation (hinge value c) over the steps of the last EvaluateConstraints() sweep.
-    double GetMaxViolation() const { return cons_val_mat_.size() > 0 ? std::max(0.0, cons_val_mat_.maxCoeff()) : 0.0; }
+    double GetMaxViolation() const {
+        return cons_val_mat_.size() > 0
+                       ? std::max(0.0, cons_val_mat_.maxCoeff())
+                       : 0.0;
+    }
 
     void Hessian(const int step, const State &x, const Control &u) {
         hessian_xx_.setZero();
@@ -124,7 +144,8 @@ private:
     double cons_val_;
     double ctg_val_;
     Eigen::Matrix<T, dim, 1> cons_val_mat_; // c(x)
-    Eigen::Matrix<T, dim, 1> ctg_val_mat_;  // (lambda + 0.5 * penalty * c(x)) * c(x)
+    // (lambda + 0.5 * penalty * c(x)) * c(x)
+    Eigen::Matrix<T, dim, 1> ctg_val_mat_;
     Eigen::Matrix<T, dim, 1> penalty_;
     MatrixLXX hessian_xx_;
     MatrixLUU hessian_uu_;

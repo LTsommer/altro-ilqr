@@ -21,20 +21,31 @@ template<typename T, unsigned M, unsigned int N>
 class AccCostFunc final : public CostFunc<T, M, N> {
 public:
     OCP_VARIABLES(T, M, N)
-    AccCostFunc(const CostTermConfig &config) : w_acc_(config.weights.at(WeightIndex::WeightAcc)) {
+    AccCostFunc(const CostTermConfig &config)
+        : w_acc_(config.weights.at(WeightIndex::WeightAcc)) {
         CostFunc<T, M, N>::SetHorizon(config.steps.size());
     }
 
     ~AccCostFunc() = default;
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(AccCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(AccCostFunc));
+    }
 
-    virtual std::string GetName() const override { return std::string("AccCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("AccCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &state, const Control &ctrl, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &state,
+                          const Control &ctrl,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -55,20 +66,31 @@ template<typename T, unsigned M, unsigned int N>
 class YawRateCostFunc final : public CostFunc<T, M, N> {
 public:
     OCP_VARIABLES(T, M, N)
-    YawRateCostFunc(const CostTermConfig &config) : w_yaw_rate_(config.weights.at(WeightIndex::WeightYawRate)) {
+    YawRateCostFunc(const CostTermConfig &config)
+        : w_yaw_rate_(config.weights.at(WeightIndex::WeightYawRate)) {
         CostFunc<T, M, N>::SetHorizon(config.steps.size());
     };
 
     ~YawRateCostFunc() = default;
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(YawRateCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(YawRateCostFunc));
+    }
 
-    virtual std::string GetName() const override { return std::string("YawRatwCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("YawRatwCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &state, const Control &ctrl, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &state,
+                          const Control &ctrl,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -89,22 +111,35 @@ class OffsetCostFunc final : public CostFunc<T, M, N> {
 public:
     OCP_VARIABLES(T, M, N);
     OffsetCostFunc(const CostTermConfig &config)
-        : w_offset_(config.weights.at(WeightIndex::WeightRefOffset)), p_ref_(config.p_ref) {
+        : w_offset_(config.weights.at(WeightIndex::WeightRefOffset)),
+          p_ref_(config.p_ref) {
         CostFunc<T, M, N>::SetHorizon(config.steps.size());
     };
 
     ~OffsetCostFunc() = default;
 
-    void UpdateConfig(const CostTermConfig &config) override { p_ref_ = config.p_ref; }
+    void UpdateConfig(const CostTermConfig &config) override {
+        p_ref_ = config.p_ref;
+    }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(OffsetCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(OffsetCostFunc));
+    }
 
-    virtual std::string GetName() const override { return std::string("OffsetCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("OffsetCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &x, const Control &u, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &x,
+                          const Control &u,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -126,20 +161,31 @@ class VelDiffCostFunc final : public CostFunc<T, M, N> {
 public:
     OCP_VARIABLES(T, M, N);
     VelDiffCostFunc(const CostTermConfig &config)
-        : w_vel_diff_(config.weights.at(WeightVelDiff)), velocity_(config.velocity) {
+        : w_vel_diff_(config.weights.at(WeightVelDiff)),
+          velocity_(config.velocity) {
         CostFunc<T, M, N>::SetHorizon(config.steps.size());
     };
 
     ~VelDiffCostFunc() = default;
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(VelDiffCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(VelDiffCostFunc));
+    }
 
-    virtual std::string GetName() const override { return std::string("VelDiffCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("VelDiffCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &state, const Control &ctrl, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &state,
+                          const Control &ctrl,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -168,14 +214,24 @@ public:
 
     ~CurvatureCostFunc() = default;
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(CurvatureCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(CurvatureCostFunc));
+    }
 
-    virtual std::string GetName() const override { return std::string("CurvatureCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("CurvatureCostFunc");
+    }
 
-    virtual bool Evaluate(const int step, const State &state, const Control &ctrl, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &state,
+                          const Control &ctrl,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -207,25 +263,38 @@ public:
           acceleration_(config.acceleration) {
         // Both references are read at every node, the terminal one included.
         if (acceleration_.size() < velocity_.size()) {
-            throw std::invalid_argument("LateralComfortCostFunc: config.acceleration needs one entry per node");
+            throw std::invalid_argument(
+                    "LateralComfortCostFunc: config.acceleration needs one "
+                    "entry per node");
         }
         cross_coeff_.resize(velocity_.size());
         for (int i = 0; i < static_cast<int>(velocity_.size()); i++) {
-            cross_coeff_[i] = 2 * w_jerk_ * pow(velocity_[i], 4) * acceleration_[i];
+            cross_coeff_[i] =
+                    2 * w_jerk_ * pow(velocity_[i], 4) * acceleration_[i];
         }
         CostFunc<T, M, N>::SetHorizon(config.steps.size());
     }
 
     ~LateralComfortCostFunc() = default;
 
-    virtual std::string GetName() const override { return std::string("LateralComfortCostFunc"); }
+    virtual std::string GetName() const override {
+        return std::string("LateralComfortCostFunc");
+    }
 
-    virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(LateralComfortCostFunc)); }
+    virtual std::type_index GetTypeIndex() const override {
+        return std::type_index(typeid(LateralComfortCostFunc));
+    }
 
-    virtual bool Evaluate(const int step, const State &state, const Control &ctrl, double &val) const override;
+    virtual bool Evaluate(const int step,
+                          const State &state,
+                          const Control &ctrl,
+                          double &val) const override;
 
-    virtual bool Gradient(
-            const int step, const State &x, const Control &u, Eigen::Ref<VecX> lx, Eigen::Ref<VecU> lu) const override;
+    virtual bool Gradient(const int step,
+                          const State &x,
+                          const Control &u,
+                          Eigen::Ref<VecX> lx,
+                          Eigen::Ref<VecU> lu) const override;
 
     virtual bool Hessian(const int step,
                          const State &x,
@@ -239,7 +308,8 @@ private:
     const double w_jerk_;              // jerk weight
     std::vector<double> velocity_;     // longitudinal speed
     std::vector<double> acceleration_; // longitudinal acceleration
-    std::vector<double> cross_coeff_;  // cross_coeff_ = 3 * w_jerk_ * V^4 * \dot(V);
+    // cross_coeff_ = 3 * w_jerk_ * V^4 * \dot(V);
+    std::vector<double> cross_coeff_;
 };
 
 #endif //CILQR_COST_TERMS_H

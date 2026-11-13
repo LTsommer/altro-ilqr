@@ -47,8 +47,11 @@ inline constexpr std::array<double, kNumNodes> kWeights{
 
 // Displacement with linear heading and speed over a step. The model supplies a principal
 // start heading and the validated physical turn, including any crossing of the angle boundary.
-inline Eigen::Vector2d IntegratePlanarPosition(
-        double theta0, double heading_change, double velocity0, double velocity1, double dt) {
+inline Eigen::Vector2d IntegratePlanarPosition(double theta0,
+                                               double heading_change,
+                                               double velocity0,
+                                               double velocity1,
+                                               double dt) {
     const double half_theta_change = 0.5 * heading_change;
     const double half_velocity_change = 0.5 * (velocity1 - velocity0);
     const double mid_heading = NormalizeAngle(theta0 + half_theta_change);
@@ -57,7 +60,8 @@ inline Eigen::Vector2d IntegratePlanarPosition(
     const double cos_heading = trig_table::CosValue(mid_heading);
     double weighted_cos = 0.0;
     double weighted_node_sin = 0.0;
-    for (int i = gauss_legendre::kNumNodes / 2; i < gauss_legendre::kNumNodes; ++i) {
+    for (int i = gauss_legendre::kNumNodes / 2; i < gauss_legendre::kNumNodes;
+         ++i) {
         const double node = gauss_legendre::kNodes[i];
         const double angle = NormalizeAngle(node * half_theta_change);
         const double weight = gauss_legendre::kWeights[i];
@@ -67,7 +71,8 @@ inline Eigen::Vector2d IntegratePlanarPosition(
     // Even terms use the sum of the paired velocities, odd terms use their difference.
     const double longitudinal = dt * mid_velocity * weighted_cos;
     const double lateral = dt * half_velocity_change * weighted_node_sin;
-    return {cos_heading * longitudinal - sin_heading * lateral, sin_heading * longitudinal + cos_heading * lateral};
+    return {cos_heading * longitudinal - sin_heading * lateral,
+            sin_heading * longitudinal + cos_heading * lateral};
 }
 
 // Partials w.r.t. the two local endpoint headings and speeds. The physical turn is used
@@ -84,7 +89,11 @@ struct PlanarPositionPartials {
 };
 
 inline PlanarPositionPartials IntegratePlanarPositionPartials(
-        double theta0, double heading_change, double velocity0, double velocity1, double dt) {
+        double theta0,
+        double heading_change,
+        double velocity0,
+        double velocity1,
+        double dt) {
     constexpr int kNum = gauss_legendre::kNumNodes;
     using NodeArray = Eigen::Array<double, kNum, 1>;
     const Eigen::Map<const NodeArray> nodes(gauss_legendre::kNodes.data());
@@ -92,7 +101,8 @@ inline PlanarPositionPartials IntegratePlanarPositionPartials(
 
     // Column 0: weight of the start value at each node (1 - s); column 1: of the end value (s).
     Eigen::Matrix<double, kNum, 2> end_weights;
-    end_weights.col(1) = (0.5 * (nodes + 1.0)).matrix(); // position of each node in [0, 1]
+    // position of each node in [0, 1]
+    end_weights.col(1) = (0.5 * (nodes + 1.0)).matrix();
     end_weights.col(0) = (1.0 - end_weights.col(1).array()).matrix();
 
     const NodeArray s = end_weights.col(1).array();
@@ -115,7 +125,8 @@ inline PlanarPositionPartials IntegratePlanarPositionPartials(
     node_partials.col(3) = (w * sin_theta).matrix();
 
     // Row 0: w.r.t. the start values; row 1: w.r.t. the end values.
-    const Eigen::Matrix<double, 2, 4> end_partials = end_weights.transpose() * node_partials;
+    const Eigen::Matrix<double, 2, 4> end_partials =
+            end_weights.transpose() * node_partials;
 
     using Index = PlanarPositionPartials::Index;
     PlanarPositionPartials p;

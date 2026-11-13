@@ -57,18 +57,21 @@ struct ILQRSolverState {
     double cost_;    // current working cost value
 
     // M = dims(state), N = dims(control)
-    MatrixLXXs fx_;  // M * M * (T+1), jacobian of f w.r.t x
-    MatrixLXUs fu_;  // M * N * (T+1), jacobian of f w.r.t u
-    VecXs lx_;       // M * (T+1), gradient of cost w.r.t x
-    VecUs lu_;       // N * (T+1), gradient of cost w.r.t u
-    VecXs cx_;       // M * (T+1), augmented lag gradient of constraint w.r.t x : c_x * (lambda + penalty * c(x, u))
-    VecUs cu_;       // N * (T+1), augmented lag gradient of constraint w.r.t u : c_u * (lambda + penalty * c(x, u))
+    MatrixLXXs fx_; // M * M * (T+1), jacobian of f w.r.t x
+    MatrixLXUs fu_; // M * N * (T+1), jacobian of f w.r.t u
+    VecXs lx_;      // M * (T+1), gradient of cost w.r.t x
+    VecUs lu_;      // N * (T+1), gradient of cost w.r.t u
+    VecXs cx_; // M * (T+1), augmented lag gradient of constraint w.r.t x : c_x * (lambda + penalty * c(x, u))
+    VecUs cu_; // N * (T+1), augmented lag gradient of constraint w.r.t u : c_u * (lambda + penalty * c(x, u))
     MatrixLXXs lxx_; // M * M * (T+1), hessian of cost w.r.t x
     MatrixLXUs lxu_; // M * N * (T+1), hessian of cost w.r.t x, u
     MatrixLUUs luu_; // N * N * (T+1), hessian of cost w.r.t u
-    MatrixLXXs cxx_; // M * M * (T+1), augmented lag hessian of cost w.r.t x : c_x * penalty * c_x
-    MatrixLXUs cxu_; // N * N * (T+1), augmented lag hessian of cost w.r.t x, u : c_x * penalty * c_u
-    MatrixLUUs cuu_; // N * N * (T+1), augmented lag hessian of cost w.r.t u : c_u * penalty * c_u
+    // M * M * (T+1), augmented lag hessian of cost w.r.t x : c_x * penalty * c_x
+    MatrixLXXs cxx_;
+    // N * N * (T+1), augmented lag hessian of cost w.r.t x, u : c_x * penalty * c_u
+    MatrixLXUs cxu_;
+    // N * N * (T+1), augmented lag hessian of cost w.r.t u : c_u * penalty * c_u
+    MatrixLUUs cuu_;
 
     Vector2d dV_;    // delta_V 2 * 1
     VecXs Vx_;       // M * (T+1)

@@ -38,22 +38,23 @@ enum WeightIndex {
 };
 
 struct CostTermConfig {
-    std::unordered_map<WeightIndex, double, std::hash<int>> weights{{WeightIndex::WeightAcc, 0.0},
-                                                                    {WeightIndex::WeightYawRate, 0.0},
-                                                                    {WeightIndex::WeightRefOffset, 0.0},
-                                                                    {WeightIndex::WeightVelDiff, 0.0},
-                                                                    {WeightKappa, 0.0},
-                                                                    {WeightDkappa, 0.0},
-                                                                    {WeightU, 0.0},
-                                                                    {WeightClb, 0.0},
-                                                                    {WeightCub, 0.0},
-                                                                    {WeightPlb, 0.0},
-                                                                    {WeightPrb, 0.0},
-                                                                    {WeightJerk, 0.0},
-                                                                    {WeightLatAcc, 0.0},
-                                                                    {WeightLatJerk, 0.0},
-                                                                    {WeightDotKappa, 0.0},
-                                                                    {WeightComfortDist, 0.0}};
+    std::unordered_map<WeightIndex, double, std::hash<int>> weights{
+            {WeightIndex::WeightAcc, 0.0},
+            {WeightIndex::WeightYawRate, 0.0},
+            {WeightIndex::WeightRefOffset, 0.0},
+            {WeightIndex::WeightVelDiff, 0.0},
+            {WeightKappa, 0.0},
+            {WeightDkappa, 0.0},
+            {WeightU, 0.0},
+            {WeightClb, 0.0},
+            {WeightCub, 0.0},
+            {WeightPlb, 0.0},
+            {WeightPrb, 0.0},
+            {WeightJerk, 0.0},
+            {WeightLatAcc, 0.0},
+            {WeightLatJerk, 0.0},
+            {WeightDotKappa, 0.0},
+            {WeightComfortDist, 0.0}};
     std::vector<double> velocity{};
     std::vector<double> acceleration{};
     std::vector<double> yaw;
@@ -69,8 +70,9 @@ struct CostTermConfig {
     std::vector<std::vector<Vector2d>> p_bound; // left bound p1->p2 and right
     // Boundary data indexed by boundary point (not by time step), used to re-anchor p_bound /
     // left_safe_dist / right_safe_dist to where the vehicle actually is.
-    vector<double> bound_s;                            // s of each boundary point (increasing)
-    std::vector<std::vector<Vector2d>> bound_segments; // {p1, p2, p3, p4} at each boundary point
+    vector<double> bound_s; // s of each boundary point (increasing)
+    // {p1, p2, p3, p4} at each boundary point
+    std::vector<std::vector<Vector2d>> bound_segments;
     vector<double> bound_left_safe_dist;
     vector<double> bound_right_safe_dist;
     // Per step. safe_dist: minimum distance to the boundaries (hard constraint);

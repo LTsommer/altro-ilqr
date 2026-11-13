@@ -8,6 +8,7 @@
 #include "ocp_problem.hpp"
 #include "ilqr_process.hpp"
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
@@ -17,15 +18,9 @@ public:
     OCP_VARIABLES(T, M, N)
     // Throws std::invalid_argument unless every step size is finite and positive: the dynamics
     // (and their integrators) are only defined for such steps, and every solver path uses them.
-    explicit ALILQRSolver(std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface, const vector<double> &steps)
-        : problem_(std::move(ocp_interface)), step_sizes_(steps) {
-        for (int t = 0; t < static_cast<int>(step_sizes_.size()); ++t) {
-            if (!(std::isfinite(step_sizes_[t]) && step_sizes_[t] > 0.0)) {
-                throw std::invalid_argument("ALILQRSolver: step size " + std::to_string(t) +
-                                            " must be finite and positive, got " + std::to_string(step_sizes_[t]));
-            }
-        }
-    }
+    explicit ALILQRSolver(
+            std::unique_ptr<OCPInterface<T, M, N>> &&ocp_interface,
+            const vector<double> &steps);
 
     ALILQRSolver(const ALILQRSolver &) = delete;
     ALILQRSolver &operator=(const ALILQRSolver &) = delete;
@@ -33,14 +28,19 @@ public:
     const OCPInterface<T, M, N> &Problem() const { return *problem_; }
 
     // Returned by value: returning a reference to a temporary was a dangling reference.
-    static Controls GenerateNominalControlSeq(int steps) { return Controls(steps, 0.5 * Control::Ones()); }
+    static Controls GenerateNominalControlSeq(int steps) {
+        return Controls(steps, 0.5 * Control::Ones());
+    }
 
     [[maybe_unused]]
     void AddCostFuncs(const CostTermConfig &config) {
         problem_->SetConfig(config);
     }
 
-    void Solve(const State &x0, const Controls &u0, States &x_res_seq, Controls &u_res_seq);
+    void Solve(const State &x0,
+               const Controls &u0,
+               States &x_res_seq,
+               Controls &u_res_seq);
 
     void SetTimer(const bool use_timer) { use_timer_ = use_timer; }
 
@@ -48,30 +48,7 @@ public:
 
     SolverStatus GetSolverStatus() { return status_; }
 
-    void ShowSolverState() const {
-        switch (status_) {
-            case SolverStatus::OCPSolved:
-                std::cout << "Problem Solved\n";
-                break;
-            case SolverStatus::OCPUnsolved:
-                std::cout << "Problem Unsolved\n";
-                break;
-            case SolverStatus::MaxIterReached:
-                std::cout << "Maximum Iteration Reached\n";
-                break;
-            case SolverStatus::CostIncrease:
-                std::cout << "Problem Not Converge\n";
-                break;
-            case SolverStatus::MaxPenalty:
-                std::cout << "Maximum Penalty Reached\n";
-                break;
-            case SolverStatus::RegularizationFailed:
-                std::cout << "Regularization Failed\n";
-                break;
-            default:
-                std::cout << "Unknown Solver Status\n";
-        }
-    }
+    void ShowSolverState() const;
 
     void SetUpdateConfig(const bool update) { update_config_ = update; }
 
@@ -89,10 +66,19 @@ public:
     double SolveTimeMs() const { return solve_time_ms_; }
 
 private:
-    double InitTraj(const State &x_0, const Controls &u_0, ILQRSolverState<T, M, N> *ilqr_state) const;
+    double InitTraj(const State &x_0,
+                    const Controls &u_0,
+                    ILQRSolverState<T, M, N> *ilqr_state) const;
 
     // The following methods implement the iLQR algorithm
     void GenerateTrajectory(ILQRSolverState<T, M, N> *ilqr_state);
+
+    void PrintSummary(double max_violation,
+                      std::uint32_t total_time_microseconds,
+                      std::uint32_t derivative_time_microseconds,
+                      std::uint32_t backward_time_microseconds,
+                      std::uint32_t forward_time_microseconds,
+                      std::uint32_t update_config_time_microseconds) const;
 
     bool ForwardProcess(const States &x_old,
                         const Controls &u_old,
@@ -102,7 +88,9 @@ private:
                         double *ratio,
                         ILQRSolverState<T, M, N> *ilqr_state) const;
 
-    double RollOut(const State &x0, const Controls &u, ILQRSolverState<T, M, N> *ilqr_state) const;
+    double RollOut(const State &x0,
+                   const Controls &u,
+                   ILQRSolverState<T, M, N> *ilqr_state) const;
 
     // Cost (including AL terms) of a given trajectory, without changing it.
     double EvaluateTotalCost(const States &x, const Controls &u) const;
@@ -125,18 +113,26 @@ private:
     void InitializeILQRSolverState(ILQRSolverState<T, M, N> *ilqr_state) const;
 
     // The following methods compute derivatives
-    void CalcKinematicsDerivatives(const States &x, const Controls &u, MatrixLXXs *f_x, MatrixLXUs *f_u) const;
+    void CalcKinematicsDerivatives(const States &x,
+                                   const Controls &u,
+                                   MatrixLXXs *f_x,
+                                   MatrixLXUs *f_u) const;
 
     const std::vector<double> &step_sizes() const { return step_sizes_; }
 
 private:
     std::unique_ptr<OCPInterface<T, M, N>> problem_;
     std::vector<double> step_sizes_;
-    static const int kMaxIter_;       // max inner iLQR iterations per AL outer iteration
-    static const int kMaxOuterIter_;  // max AL outer iterations (dual / penalty updates)
-    static const double kTolFunRel_;  // inner: accepted cost decrease / |cost| below this
-    static const double kTolExpRel_;  // inner: predicted full-step decrease / |cost| below this
-    static const double kStallRatio_; // outer: violation must drop below this fraction of the last one
+    // max inner iLQR iterations per AL outer iteration
+    static const int kMaxIter_;
+    // max AL outer iterations (dual / penalty updates)
+    static const int kMaxOuterIter_;
+    // inner: accepted cost decrease / |cost| below this
+    static const double kTolFunRel_;
+    // inner: predicted full-step decrease / |cost| below this
+    static const double kTolExpRel_;
+    // outer: violation must drop below this fraction of the last one
+    static const double kStallRatio_;
     static const double kViolationTol_;
     static const double krhoFactor_;
     static const double krhoMax_;
