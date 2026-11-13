@@ -1,6 +1,7 @@
 #include "common/path_validation.hpp"
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -63,6 +64,29 @@ int main() {
     if (!short_crossing || short_crossing->segment != 0 ||
         short_crossing->reason != "obstacle 1") {
         std::cerr << "Expected the short path segment to cross obstacle 1\n";
+        return EXIT_FAILURE;
+    }
+
+    std::vector<altro::PathClearance> clearances;
+    const auto passing =
+            altro::ValidatePath(scene, {{2, 2.5}, {18, 2.5}}, &clearances);
+    if (passing || clearances.size() != 5 ||
+        clearances.back().object != "obstacle 1" ||
+        clearances.back().segment != 0 ||
+        std::abs(clearances.back().center_distance - 1.5) > 1e-12 ||
+        std::abs(clearances.back().path_point.y() - 2.5) > 1e-12 ||
+        std::abs(clearances.back().object_point.y() - 1.0) > 1e-12) {
+        std::cerr << "Expected the obstacle clearance and closest points\n";
+        return EXIT_FAILURE;
+    }
+
+    const auto blocked =
+            altro::ValidatePath(scene, {{2, 3}, {2, 0}, {18, 0}}, &clearances);
+    if (!blocked || blocked->segment != 0 ||
+        blocked->reason != "left road boundary" || clearances.size() != 5 ||
+        clearances.back().segment != 1 ||
+        clearances.back().center_distance != 0.0) {
+        std::cerr << "Expected the first failure and later obstacle contact\n";
         return EXIT_FAILURE;
     }
 

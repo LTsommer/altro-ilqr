@@ -59,15 +59,55 @@ void AppendRoadsideObstacles(const FrenetCoordinateSystem &fcs,
     }
 }
 
+void RecordClearance(PathClearance &closest,
+                     std::size_t segment,
+                     double distance,
+                     const Vec2d &path_point,
+                     const Vec2d &object_point) {
+    if (std::isfinite(distance) &&
+        (!closest.segment || distance < closest.center_distance)) {
+        closest.segment = segment;
+        closest.center_distance = distance;
+        closest.path_point = path_point;
+        closest.object_point = object_point;
+    }
+}
+
+template<typename Geometry>
+bool SweepTouches(const LineSegment2d &segment,
+                  const Geometry &geometry,
+                  double radius,
+                  std::size_t index,
+                  PathClearance *closest) {
+    if (!closest) {
+        return geometry.DistanceTo(segment) <= radius;
+    }
+    Vec2d path_point, object_point;
+    const double distance =
+            geometry.DistanceTo(segment, &object_point, &path_point);
+    RecordClearance(*closest, index, distance, path_point, object_point);
+    return distance <= radius;
+}
+
 bool SweepTouchesEdges(const LineSegment2d &segment,
                        const Points &edge,
-                       double radius) {
+                       double radius,
+                       std::size_t index,
+                       PathClearance *closest) {
+    bool touches = false;
     for (std::size_t i = 1; i < edge.size(); ++i) {
-        if (segment.DistanceTo(LineSegment2d(edge[i - 1], edge[i])) <= radius) {
-            return true;
+        if (SweepTouches(segment,
+                         LineSegment2d(edge[i - 1], edge[i]),
+                         radius,
+                         index,
+                         closest)) {
+            touches = true;
+            if (!closest) {
+                break;
+            }
         }
     }
-    return false;
+    return touches;
 }
 
 bool FinitePoint(const Vec2d &point) {
@@ -131,7 +171,12 @@ PathSceneGeometry BuildPathSceneGeometry(
 }
 
 std::optional<PathValidationFailure> ValidatePath(
-        const PathSceneGeometry &scene, const Points &path) {
+        const PathSceneGeometry &scene,
+        const Points &path,
+        std::vector<PathClearance> *clearances) {
+    if (clearances) {
+        clearances->clear();
+    }
     if (path.size() < 2) {
         return PathValidationFailure{std::nullopt,
                                      "path needs at least two points"};
@@ -163,35 +208,70 @@ std::optional<PathValidationFailure> ValidatePath(
     const LineSegment2d exit(scene.left_boundary.back(),
                              scene.right_boundary.back());
 
+    if (clearances) {
+        for (const char *name : {"left road boundary",
+                                 "right road boundary",
+                                 "road start",
+                                 "road end"}) {
+            clearances->emplace_back();
+            clearances->back().object = name;
+        }
+        for (std::size_t j = 0; j < obstacles.size(); ++j) {
+            clearances->emplace_back();
+            clearances->back().object = "obstacle " + std::to_string(j + 1);
+        }
+    }
+    const auto closest = [clearances](std::size_t object) -> PathClearance * {
+        return clearances ? &(*clearances)[object] : nullptr;
+    };
+    std::optional<PathValidationFailure> failure;
     constexpr double kContactTolerance = 1e-9; // meters
     const double radius = scene.vehicle_radius + kContactTolerance;
     for (std::size_t i = 0; i + 1 < path.size(); ++i) {
         const auto &start = path[i];
         const auto &end = path[i + 1];
         if (!FinitePoint(start) || !FinitePoint(end)) {
-            return PathValidationFailure{i, "non-finite path point"};
+            if (clearances) {
+                clearances->clear();
+            }
+            return failure ? failure
+                           : std::optional<PathValidationFailure>{
+                                     PathValidationFailure{
+                                             i, "non-finite path point"}};
         }
+        const auto record_failure = [&](const std::string &reason) {
+            if (!failure) {
+                failure = PathValidationFailure{i, reason};
+            }
+        };
         const LineSegment2d segment(start, end);
-        if (SweepTouchesEdges(segment, scene.left_boundary, radius)) {
-            return PathValidationFailure{i, "left road boundary"};
+        if (SweepTouchesEdges(
+                    segment, scene.left_boundary, radius, i, closest(0))) {
+            record_failure("left road boundary");
         }
-        if (SweepTouchesEdges(segment, scene.right_boundary, radius)) {
-            return PathValidationFailure{i, "right road boundary"};
+        if (SweepTouchesEdges(
+                    segment, scene.right_boundary, radius, i, closest(1))) {
+            record_failure("right road boundary");
         }
-        if (segment.DistanceTo(entry) <= radius ||
-            segment.DistanceTo(exit) <= radius || !corridor.IsPointIn(start)) {
-            return PathValidationFailure{
-                    i, "outside road corridor or at a road endpoint"};
+        const bool touches_entry =
+                SweepTouches(segment, entry, radius, i, closest(2));
+        const bool touches_exit =
+                SweepTouches(segment, exit, radius, i, closest(3));
+        if (touches_entry || touches_exit || !corridor.IsPointIn(start)) {
+            record_failure("outside road corridor or at a road endpoint");
         }
 
         for (std::size_t j = 0; j < obstacles.size(); ++j) {
-            if (obstacles[j].DistanceTo(segment) <= radius) {
-                return PathValidationFailure{
-                        i, "obstacle " + std::to_string(j + 1)};
+            if (SweepTouches(
+                        segment, obstacles[j], radius, i, closest(j + 4))) {
+                record_failure("obstacle " + std::to_string(j + 1));
             }
         }
+        if (failure && !clearances) {
+            return failure;
+        }
     }
-    return std::nullopt;
+    return failure;
 }
 
 bool ReportPathValidation(const std::optional<PathValidationFailure> &failure,

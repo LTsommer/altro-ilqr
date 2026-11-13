@@ -106,6 +106,10 @@ public:
    * @return The distance from the line segment to the polygon.
    */
     double DistanceTo(const LineSegment2d &line_segment) const;
+    // Writes the nearest point on this polygon and on the given segment.
+    double DistanceTo(const LineSegment2d &line_segment,
+                      Vec2d *on_polygon,
+                      Vec2d *on_segment) const;
 
     /**
    * @brief Compute the distance from a box to the polygon.

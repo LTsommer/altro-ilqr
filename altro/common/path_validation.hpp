@@ -34,9 +34,20 @@ struct PathValidationFailure {
     std::string reason;
 };
 
+struct PathClearance {
+    std::string object;
+    std::optional<std::size_t> segment;
+    double center_distance = 0.0;
+    Vec2d path_point;
+    Vec2d object_point;
+};
+
 // Checks the sweep of a circle along the XY path. Boundary contact is a failure.
+// When requested, also records the closest approach to each scene object.
 std::optional<PathValidationFailure> ValidatePath(
-        const PathSceneGeometry &scene, const std::vector<Vec2d> &path);
+        const PathSceneGeometry &scene,
+        const std::vector<Vec2d> &path,
+        std::vector<PathClearance> *clearances = nullptr);
 
 bool ReportPathValidation(const std::optional<PathValidationFailure> &failure,
                           bool print_summary);

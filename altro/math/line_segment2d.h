@@ -90,6 +90,10 @@ public:
 
     // Minimum distance between two closed segments, zero when they intersect.
     double DistanceTo(const LineSegment2d &other) const;
+    // Writes the nearest point on this segment and on the given segment.
+    double DistanceTo(const LineSegment2d &other,
+                      Vec2d *nearest,
+                      Vec2d *other_nearest) const;
 
     /**
    * @brief Compute the shortest distance from a point on the line segment
