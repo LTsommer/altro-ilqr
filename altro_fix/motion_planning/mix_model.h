@@ -46,17 +46,9 @@ public:
     MixModel() = default;
     ~MixModel() = default;
 
-    State PrepareInitialState(const State &x) const override {
-        State prepared = x;
-        prepared(mTheta) = vehicle_heading::PrepareInitialHeading(x(mTheta));
-        return prepared;
-    }
+    State PrepareInitialState(const State &x) const override;
 
-    State StateDifference(const State &x, const State &reference) const override {
-        State delta = x - reference;
-        delta(mTheta) = AngleDifference(x(mTheta), reference(mTheta));
-        return delta;
-    }
+    State StateDifference(const State &x, const State &reference) const override;
 
     inline A JacobianX(const State &x, const Control &u, const double dt) const override {
         A fx;
@@ -122,32 +114,20 @@ public:
     void set_traj_info(const vector<double> &t,
                        const vector<double> &s,
                        const vector<double> &v,
-                       const vector<double> &y) {
-        sy.set_points(s, y);
-        ts.set_points(t, s);
-        tv.set_points(t, v);
-    }
+                       const vector<double> &y);
 
     void SetTimer(const double timer) override { timer_ = timer; }
 
-    void UpdateTimer(const double dt) override { timer_ += dt; }
+    void UpdateTimer(const double dt) override;
 
 private:
     // The physical turn int_0^dt kappa(t) v(t) dt, before wrapping the next heading.
-    static double HeadingChange(const State &x, const Control &u, const double dt) {
-        return x(mKappa) * x(mVel) * dt + 0.5 * (x(mKappa) * x(mAcc) + x(mVel) * u(mDotKappa)) * sqr<double>(dt) +
-               (1.0 / 3.0) * (0.5 * x(mKappa) * u(mJerk) + x(mAcc) * u(mDotKappa)) * cube<double>(dt) +
-               0.125 * u(mDotKappa) * u(mJerk) * cube<double>(dt) * dt;
-    }
+    static double HeadingChange(const State &x, const Control &u, const double dt);
 
-    static double NextVel(const State &x, const Control &u, const double dt) {
-        return x(mVel) + x(mAcc) * dt + 0.5 * u(mJerk) * sqr<double>(dt);
-    }
+    static double NextVel(const State &x, const Control &u, const double dt);
 
     // Partials of the position displacement computed by ForwardCalculation.
-    static PlanarPositionPartials PositionPartials(const State &x, const Control &u, const double dt) {
-        return IntegratePlanarPositionPartials(x(mTheta), HeadingChange(x, u, dt), x(mVel), NextVel(x, u, dt), dt);
-    }
+    static PlanarPositionPartials PositionPartials(const State &x, const Control &u, const double dt);
 
     spline sy;
     spline ts;
