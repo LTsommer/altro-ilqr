@@ -5,19 +5,19 @@
 - **AL-iLQR**：在 iLQR 上加入增广拉格朗日（Augmented Lagrangian, AL）机制，以处理一般的状态与控制约束；
 - **ALTRO 风格的 solution polishing**：先以 AL-iLQR 获得动力学可行的解，再对激活约束做目标函数加权的投影修正，以进一步降低约束违反量。
 
-项目最初配套于知乎文章[《一种 AL-iLQR 的框架实现和应用》](https://zhuanlan.zhihu.com/p/703259867)。仓库保留了开发过程中的两个代码快照：当前的 `altro_fix/` 是推荐阅读和运行的版本；`alilqr/` 是较早期的实现，主要用于回溯架构演进。
+项目最初配套于知乎文章[《一种 AL-iLQR 的框架实现和应用》](https://zhuanlan.zhihu.com/p/703259867)。仓库保留了开发过程中的两个代码快照：当前的 `altro/` 是推荐阅读和运行的版本；`alilqr/` 是较早期的实现，主要用于回溯架构演进。
 
 > [!WARNING]
 > 这是研究与原型代码，而不是已经产品化的通用求解器。示例的参考线、约束参数和权重直接写在源文件中；没有数据加载格式或持续集成测试。使用前请先阅读“限制与已知边界”。
 
 ## 能做什么
 
-`altro_fix/` 中有两个车辆轨迹优化示例：
+`altro/` 中有两个车辆轨迹优化示例：
 
 | 目标 | 入口 | 状态与控制 | 离散变量 |
 | --- | --- | --- | --- |
 | 曲率平滑与道路边界约束 | `main.cpp` | $x=[p_x,p_y,\theta,\kappa,\dot\kappa]$ <br> $u=[\ddot\kappa]$ | 弧长 $ds$ |
-| 横纵向耦合的轨迹优化 | `motion_planning/motion_planning.cpp` | $x=[p_x,p_y,\theta,\kappa,v,a]$ <br> $u=[j,\dot\kappa]$ | 时间 $dt$ |
+| 横纵向耦合的轨迹优化 | `motion_planning.cpp` | $x=[p_x,p_y,\theta,\kappa,v,a]$ <br> $u=[j,\dot\kappa]$ | 时间 $dt$ |
 
 后一个模型覆盖了 jerk、曲率变化率、速度、加速度、向心加速度/jerk、航向误差以及道路安全距离等常见车辆规划项。位置积分使用 10 点 Gauss–Legendre 积分，以减小简单欧拉积分对曲线段的累计误差。
 
@@ -75,31 +75,37 @@ polishing 改成 Riccati 递推后，动力学严格满足、收敛快：曲率�
 
 ### 后续的耗时优化
 
-在上表“优化后”的基础上，又做了两轮只针对耗时的改动，不改变算法。横纵向耦合示例的总耗时（31～41 次运行的中位数，Linux，`-O2`，与上表不是同一批测量）：
+在上表“优化后”的基础上，又做了两轮只针对耗时的改动，不改变算法。以下统一以 PR #8 ～ #17 合并前的 35.5 ms 为基准。两轮优化的数据另取 31～41 次运行的中位数（Linux，`-O2`），跨批次降幅供参考。
 
-| 版本 | 横纵向耦合：总耗时 | 相对上一行 |
-| --- | --- | --- |
-| 上表“优化后” | 18.5 ms | |
-| 去掉热路径上的堆分配 | 17.0 ms | 约 -8% |
-| 位置积分对称配对 + 限速投影直接用单位切线 | **12.4 ms** | 约 -27% |
+| 版本 | 横纵向耦合：总耗时 | 相对 35.5 ms 的降幅 |
+| --- | ---: | ---: |
+| PR #8 ～ #17 合并前 | 35.5 ms | 0% |
+| 上表“优化后” | 18.6 ms | 约 47.6% |
+| 去掉热路径上的堆分配 | 17.0 ms | 约 52.1% |
+| 位置积分对称配对 + 限速投影直接用单位切线 | 12.4 ms | 约 65.1% |
+| 当前版本（Riccati） | **10.912 ms** | **约 69.3%** |
+
+末行来自独立测量（Linux x86_64、GCC 11.4、CMake Release，固定在 CPU 15，每组取 151 次运行的中位数）。分阶段耗时和其他后端的结果见 [Polishing benchmark](#polishing-benchmark)。
 
 - **堆分配**：位置积分原来每次调用都在堆上建两个 `std::vector`，改为栈上定长数组；梯度范数、配置更新里的重复分配也一并去掉。求解结果逐字节不变。
 - **对称配对**：10 个 Gauss–Legendre 节点关于区间中点对称，在中点航向的坐标系里奇数项相互抵消，每步的三角函数求值从 20 次降到 12 次。与逐点求和只差舍入误差：轨迹位置最大变化 6e-11 m，迭代次数和约束违反量不变。
 - **单位切线**：限速约束把车的位置投影到参考线时，原来先用 `atan2` 求航向再算 `sin`、`cos`，现在直接把样条导数归一化。
 
-曲率平滑示例只有约 0.8 ms，不经过这两段代码，耗时不变。
+这两项优化针对横纵向耦合示例。当前版本的曲率平滑示例使用默认 Riccati 后端，`Solve()` 耗时中位数为 **0.608 ms**。测量条件见 [Polishing benchmark](#polishing-benchmark)。
 
 关于这两轮改动叠加后的效果：
 
-- 第一轮约 8% 的提速主要来自旧位置积分里的堆分配。第二轮把前向积分整体换成了配对公式，那段代码已不在热路径上，所以两轮的提速不能简单相加。
+- 第一轮的耗时下降主要来自去掉旧位置积分里的堆分配。第二轮把前向积分整体换成了配对公式，那段代码已不在热路径上，所以两轮的提速不能简单相加。
 - 第一轮里其余的小改动（梯度范数、配置更新、`reserve`）在第二轮的基线上效果已经小于测量波动：把“只有第二轮”和“两轮都有”绑在同一个核上交替各跑 61 次，用 GCC 12.3 测得后者快 2.0～2.3%（12.55 → 12.27 ms），而用 GCC 11.4 的另一组测量得到的是慢约 2.9%。两个版本的输出逐字节一致。
 - 结论是这类 ±3% 以内的差别取决于编译器和代码布局，不能当作改动本身的效果；只有十个百分点以上的变化才值得写进上表。第一轮的改动仍然保留，因为其中包含两处越界读的修复。
+
+**横纵向耦合的总耗时约下降 69.3%**，从 PR #8 ～ #17 合并前的 35.5 ms 降至当前版本的 10.912 ms。两组数据来自不同测量批次，这一比例仅供参考。
 
 ## 目录与架构
 
 ```text
 .
-├── altro_fix/                         # 当前推荐使用的实现
+├── altro/                         # 当前推荐使用的实现
 │   ├── main.cpp                       # 5 状态、1 控制的曲率平滑示例
 │   ├── motion_planning/               # 6 状态、2 控制的耦合规划示例
 │   ├── augmented_ilqr/                # AL-iLQR 与 polishing 求解器
@@ -113,7 +119,7 @@ polishing 改成 Riccati 递推后，动力学严格满足、收敛快：曲率�
 │   ├── scripts/plot_results.py        # 读取 CSV 并画图
 │   ├── test_constraint.cpp            # 约束构造的手工实验程序
 │   └── CMakeLists.txt
-├── scripts/format.sh                  # 用 clang-format 格式化 altro_fix/
+├── scripts/format.sh                  # 用 clang-format 格式化 altro/
 ├── benchmark/projection/              # 两个示例的实际 polishing 耗时与残差
 ├── benchmark/ldl_eigen_vs_qdldl/      # Eigen 与 QDLDL 的稀疏 LDLᵀ 耗时对比
 ├── third_party/                       # 随仓库提交的 Eigen 3.4.0 头文件和 QDLDL 0.1.9 源码
@@ -331,7 +337,7 @@ $$
 
 两个模型都把状态航向存为 $[-\pi, \pi)$ 主值。初始航向和单步物理转角须为有限数，绝对值不得超过 1024 rad。模型在生成状态和调用位置积分前执行这个数值契约。航向约束和反馈使用有符号最短角差。
 
-位置变化由速度和航向的积分给出；实现使用 `common/calculus.h` 中的 10 点 Gauss–Legendre 公式计算 $\Delta p_x$ 和 $\Delta p_y$。积分使用步首航向和实际步内转角，并在生成三角函数的参数时取主值。正向积分在中点航向的坐标系里把对称的节点两两配对（`IntegratePlanarPosition`），与逐点求和等价，三角函数求值更少。`JacobianX` / `JacobianU` 中 $p_x$、 $p_y$ 两行对同一组积分节点精确求导（经局部末端航向和 $v_{k+1}$ 链式传递到 $\kappa$、 $a$ 和控制量），与正向积分保持一致。`motion_planning/motion_planning.cpp` 在此基础上注册向心加速度、向心 jerk、曲率变化率、纵向 jerk、参考线偏移、目标速度和到边界的舒适距离等代价，并加入相应的动力学和道路安全约束。此外：
+位置变化由速度和航向的积分给出；实现使用 `common/calculus.h` 中的 10 点 Gauss–Legendre 公式计算 $\Delta p_x$ 和 $\Delta p_y$。积分使用步首航向和实际步内转角，并在生成三角函数的参数时取主值。正向积分在中点航向的坐标系里把对称的节点两两配对（`IntegratePlanarPosition`），与逐点求和等价，三角函数求值更少。`JacobianX` / `JacobianU` 中 $p_x$、 $p_y$ 两行对同一组积分节点精确求导（经局部末端航向和 $v_{k+1}$ 链式传递到 $\kappa$、 $a$ 和控制量），与正向积分保持一致。`motion_planning.cpp` 在此基础上注册向心加速度、向心 jerk、曲率变化率、纵向 jerk、参考线偏移、目标速度和到边界的舒适距离等代价，并加入相应的动力学和道路安全约束。此外：
 
 - **边界跟随车辆位置**：求解时开启 `SetUpdateConfig(true)`，每轮外循环开始时把每个状态投影到参考线，按实际位置选取参考点、参考航向和边界段（而不是按时间步固定）；
 - **窄处降速**：`SpeedLimitBySConstraint` 约束 $v\le v_{lim}(s)$， $s$ 由车的位置投影得到。 $v_{lim}=3+10\times w_{free}$（m/s， $w_{free}$ 为横向可用宽度），且不低于从初速按 1.5 m/s² 减速能达到的速度；
@@ -342,7 +348,7 @@ $$
 
 ### 依赖
 
-`altro_fix/CMakeLists.txt` 明确要求：
+`altro/CMakeLists.txt` 明确要求：
 
 - CMake 3.24 或更高版本；
 - 支持 C++17 的编译器；
@@ -357,17 +363,17 @@ $$
 从仓库根目录运行：
 
 ```bash
-cmake -S altro_fix -B build/altro_fix -DCMAKE_BUILD_TYPE=Release
-cmake --build build/altro_fix --parallel
+cmake -S altro -B build/altro -DCMAKE_BUILD_TYPE=Release
+cmake --build build/altro --parallel
 
 # 5 状态、1 控制的曲率平滑示例
-./build/altro_fix/alilqr
+./build/altro/alilqr
 
 # 6 状态、2 控制的横纵向耦合示例
-./build/altro_fix/mp
+./build/altro/mp
 
 # 约束/积分相关的手工实验程序
-./build/altro_fix/test
+./build/altro/test
 ```
 
 构建文件定义了三个可执行目标：`alilqr`、`mp` 和 `test`。
@@ -378,15 +384,33 @@ cmake --build build/altro_fix --parallel
 
 ```bash
 mkdir -p out
-./build/altro_fix/mp out            # 默认 Riccati，也可显式传 riccati
-./build/altro_fix/mp out kkt-eigen  # KKT，使用 Eigen SparseLU
-./build/altro_fix/mp out kkt-qdldl
-./build/altro_fix/mp out riccati --summary
+./build/altro/mp out            # 默认 Riccati，也可显式传 riccati
+./build/altro/mp out kkt-eigen  # KKT，使用 Eigen SparseLU
+./build/altro/mp out kkt-qdldl
+./build/altro/mp out riccati --summary
 ```
 
 C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KKTEigen` 或 `altro::ProjectionMethod::KKTQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
 
 `Solve(...)` 返回 `altro::ProjectionStatus`，状态和控制输出保留最后接受的轨迹。两个示例默认关闭求解汇总，可在命令末尾加 `--summary` 查看投影状态、耗时、约束违反量和动力学残差。投影启动后如果未达到容差，示例仍会向标准错误打印提示、导出近似轨迹和道路 CSV，并返回非零退出码。
+
+### 调整示例参数
+
+两个示例分别使用 [alilqr.conf](altro/config/alilqr.conf) 和 [mp.conf](altro/config/mp.conf)。CMake 将默认配置复制到构建目录。从其他工作目录运行时，程序也从构建目录读取默认配置。
+
+调用方用各自的 `BuildScene()` 提供场景和参考数据，再调用 [BuildALTROSolver()](altro/build_altro_solver.hpp) 登记代价和约束、加载配置、组装 OCP、初始化 `x0/u0`，并返回配置好的求解器。调用方再调用 `Solve()`，根据求解状态处理结果和导出 CSV。
+
+复制对应的默认配置，调整代价权重、求解上下限、各约束的初始 `dual` 和 `penalty`，或修改 `projection_method`。显式传入的第二个位置参数优先于文件中的投影后端。
+
+```bash
+mkdir -p out
+cp altro/config/mp.conf out/mp-custom.conf
+./build/altro/mp out --config out/mp-custom.conf --summary
+```
+
+配置格式为 `key=value`，支持空行和 `#` 注释。缺项、未知项、重复键或非法值会在组装 OCP 前报错退出。场景中的道路边界、参考轨迹和沿弧长的限速仍由各示例的 `BuildScene()` 生成。
+
+`costs` 和 `constraints` 是必填的逗号分隔列表。组装器按列表顺序加载当前模型支持的代价和约束。每个启用的约束都需要对应的 `constraint.<name>.dual` 和 `constraint.<name>.penalty`。停用约束时，同时移除它的两个参数。已有自定义配置可从对应的默认配置复制这两行，保留原有注册顺序和参数。
 
 ### 查看结果
 
@@ -394,15 +418,15 @@ C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `
 
 ```bash
 mkdir -p out
-./build/altro_fix/alilqr out
-./build/altro_fix/mp out
+./build/altro/alilqr out
+./build/altro/mp out
 
 # 弹出窗口显示
-python3 altro_fix/scripts/plot_results.py alilqr --dir out
-python3 altro_fix/scripts/plot_results.py mp --dir out
+python3 altro/scripts/plot_results.py alilqr --dir out
+python3 altro/scripts/plot_results.py mp --dir out
 
 # 无图形界面时保存为 PNG
-python3 altro_fix/scripts/plot_results.py mp --dir out --save out/figs
+python3 altro/scripts/plot_results.py mp --dir out --save out/figs
 ```
 
 | 文件 | 列 |
@@ -418,7 +442,7 @@ python3 altro_fix/scripts/plot_results.py mp --dir out --save out/figs
 
 ### Polishing benchmark
 
-本地实测在 altro-ilqr 工作区完成，使用 macOS arm64、Apple Clang 14.0.3 和 CMake Release 构建。每个示例的每种方法预热 1 次，再交错运行 31 次取中位数。耗时覆盖整个 polishing，包括矩阵装配、求解和前向积分。AL-iLQR 和 CSV 导出在投影计时之外。
+下表为早期的 macOS arm64 实测，使用 Apple Clang 14.0.3 和 CMake Release 构建。每个示例的每种方法预热 1 次，再交错运行 31 次取中位数。耗时覆盖整个 polishing，包括矩阵装配、求解和前向积分。AL-iLQR 和 CSV 导出在投影计时之外。
 
 | 示例 | 求解方法 | Polishing 耗时（ms） | 接受步数 | 投影前最大违反量 | 投影后最大违反量 | 动力学残差 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -429,10 +453,21 @@ python3 altro_fix/scripts/plot_results.py mp --dir out --save out/figs
 | 横纵向耦合 | KKT · Eigen SparseLU | 11.791 | 18 | `8.58394e-3` | `5.716e-7` | 0 |
 | 横纵向耦合 | KKT · QDLDL | 2.476 | 15 | `8.58394e-3` | `9.72913e-7` | 0 |
 
-两个示例中 Riccati 的投影耗时最短，QDLDL 用时约为 Eigen SparseLU 的 16%～21%。脚本核对各后端实际执行了投影，以及 AL-iLQR 的迭代数和投影前违反量一致。
+当前版本在 Linux x86_64、GCC 11.4、CMake Release 下固定在 CPU 15 测量，每组取 151 次运行的中位数。
+
+| 示例 | 求解方法 | AL-iLQR（ms） | 投影（ms） | `Solve()` 总耗时（ms） |
+| --- | --- | ---: | ---: | ---: |
+| 曲率平滑 | Riccati（默认） | 0.541 | 0.040 | **0.608** |
+| 曲率平滑 | KKT · Eigen SparseLU | 0.541 | 0.671 | 1.240 |
+| 曲率平滑 | KKT · QDLDL | 0.541 | 0.124 | 0.690 |
+| 横纵向耦合 | Riccati（默认） | 10.530 | 0.325 | **10.912** |
+| 横纵向耦合 | KKT · Eigen SparseLU | 10.536 | 4.340 | 14.940 |
+| 横纵向耦合 | KKT · QDLDL | 10.534 | 1.541 | 12.146 |
+
+脚本核对各后端实际执行了投影，以及 AL-iLQR 的迭代数和投影前违反量一致。
 
 ```bash
-python3 benchmark/projection/run.py build/altro_fix --runs 31
+python3 benchmark/projection/run.py build/altro --runs 31
 ```
 
 ### 稀疏 LDLᵀ 对比：Eigen 与 QDLDL
@@ -464,7 +499,7 @@ benchmark/ldl_eigen_vs_qdldl/run.sh
 C++ 代码风格由根目录的 `.clang-format` 定义（4 空格缩进、行宽 120、不重排 `#include`、不改写注释），用 `scripts/format.sh` 调用 clang-format：
 
 ```bash
-scripts/format.sh                    # 格式化 altro_fix/ 下所有源文件
+scripts/format.sh                    # 格式化 altro/ 下所有源文件
 scripts/format.sh --changed          # 只格式化相对 origin/main 有改动的文件
 scripts/format.sh --check            # 只检查不修改，有未格式化的文件时返回 1
 ```

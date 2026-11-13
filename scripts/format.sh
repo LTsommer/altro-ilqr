@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Format the C++ sources under altro_fix/ with clang-format (style: .clang-format).
+# Format the C++ sources under altro/ with clang-format (style: .clang-format).
 #
 #   scripts/format.sh                 format every source file in place
 #   scripts/format.sh --changed       only files that differ from origin/main (or the given base)
@@ -44,7 +44,7 @@ if ! command -v "$clang_format" > /dev/null; then
     exit 2
 fi
 
-pattern='^altro_fix/.*\.(h|hpp|cc|cpp)$'
+pattern='^altro/.*\.(h|hpp|cc|cpp)$'
 if $changed; then
     # Tracked files changed since the base (committed or not), plus new untracked files.
     files=$({ git diff --name-only --diff-filter=d "$(git merge-base "$base" HEAD)"

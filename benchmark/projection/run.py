@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the three polishing methods on the built altro_fix examples."""
+"""Compare the three polishing methods on the built altro examples."""
 
 import argparse
 import math
