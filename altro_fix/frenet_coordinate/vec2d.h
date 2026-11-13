@@ -93,10 +93,7 @@ public:
     bool operator==(const Vec2d &other) const;
 
     //!
-    friend std::ostream &operator<<(std::ostream &out, const Vec2d &A) {
-        out << A.x() << "," << A.y() << " ";
-        return out;
-    }
+    friend std::ostream &operator<<(std::ostream &out, const Vec2d &A);
 
 protected:
     double x_ = 0.0;

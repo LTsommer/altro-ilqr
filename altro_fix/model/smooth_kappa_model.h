@@ -15,17 +15,9 @@ public:
     SmoothKappaModel() = default;
     virtual ~SmoothKappaModel() = default;
 
-    State PrepareInitialState(const State &state) const override {
-        State prepared = state;
-        prepared(kTheta) = vehicle_heading::PrepareInitialHeading(state(kTheta));
-        return prepared;
-    }
+    State PrepareInitialState(const State &state) const override;
 
-    State StateDifference(const State &state, const State &reference) const override {
-        State delta = state - reference;
-        delta(kTheta) = AngleDifference(state(kTheta), reference(kTheta));
-        return delta;
-    }
+    State StateDifference(const State &state, const State &reference) const override;
 
     // step here is ds
     /* x(k+1) = x(k) + cos(theta(k)) * ds
