@@ -1,4 +1,4 @@
-# Code style for altro_fix/. Apply it with scripts/format.sh.
+# Code style for altro/. Apply it with scripts/format.sh.
 BasedOnStyle: Google
 IndentWidth: 4
 ContinuationIndentWidth: 8
