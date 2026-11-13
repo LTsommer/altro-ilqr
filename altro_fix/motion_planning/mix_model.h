@@ -7,11 +7,12 @@
 
 #include "model.h"
 #include "../ilqr_system_declaration.hpp"
-#include "../common/math_utils.h"
 #include "../common/calculus.h"
+#include "../model/heading.h"
 #include "spline.h"
 #include <array>
 #include <cmath>
+#include <limits>
 
 // https://zhuanlan.zhihu.com/p/681311263
 
@@ -44,6 +45,18 @@ class MixModel final : public ModelBase<double, 6, 2> {
 public:
     MixModel() = default;
     ~MixModel() = default;
+
+    State PrepareInitialState(const State &x) const override {
+        State prepared = x;
+        prepared(mTheta) = vehicle_heading::PrepareInitialHeading(x(mTheta));
+        return prepared;
+    }
+
+    State StateDifference(const State &x, const State &reference) const override {
+        State delta = x - reference;
+        delta(mTheta) = AngleDifference(x(mTheta), reference(mTheta));
+        return delta;
+    }
 
     inline A JacobianX(const State &x, const Control &u, const double dt) const override {
         A fx;
@@ -90,13 +103,17 @@ public:
     }
 
     inline State ForwardCalculation(const State &x, const Control &u, const double dt) const override {
+        const double heading_change = HeadingChange(x, u, dt);
+        if (!vehicle_heading::IsSupportedAngle(heading_change)) {
+            return State::Constant(std::numeric_limits<double>::quiet_NaN());
+        }
         State state;
-        state(mTheta) = NextTheta(x, u, dt);
+        state(mTheta) = NormalizeAngle(x(mTheta) + heading_change);
         state(mKappa) = x(mKappa) + u(mDotKappa) * dt;
         state(mVel) = NextVel(x, u, dt);
         state(mAcc) = x(mAcc) + u(mJerk) * dt;
         const Eigen::Vector2d displacement =
-                IntegratePlanarPosition(x(mTheta), state(mTheta), x(mVel), state(mVel), dt);
+                IntegratePlanarPosition(x(mTheta), heading_change, x(mVel), state(mVel), dt);
         state(mXPos) = x(mXPos) + displacement.x();
         state(mYPos) = x(mYPos) + displacement.y();
         return state;
@@ -116,10 +133,9 @@ public:
     void UpdateTimer(const double dt) override { timer_ += dt; }
 
 private:
-    // theta_{k+1} = theta + int_0^dt kappa(t) v(t) dt, with kappa linear and v quadratic in t
-    static double NextTheta(const State &x, const Control &u, const double dt) {
-        return x(mTheta) + x(mKappa) * x(mVel) * dt +
-               0.5 * (x(mKappa) * x(mAcc) + x(mVel) * u(mDotKappa)) * sqr<double>(dt) +
+    // The physical turn int_0^dt kappa(t) v(t) dt, before wrapping the next heading.
+    static double HeadingChange(const State &x, const Control &u, const double dt) {
+        return x(mKappa) * x(mVel) * dt + 0.5 * (x(mKappa) * x(mAcc) + x(mVel) * u(mDotKappa)) * sqr<double>(dt) +
                (1.0 / 3.0) * (0.5 * x(mKappa) * u(mJerk) + x(mAcc) * u(mDotKappa)) * cube<double>(dt) +
                0.125 * u(mDotKappa) * u(mJerk) * cube<double>(dt) * dt;
     }
@@ -130,7 +146,7 @@ private:
 
     // Partials of the position displacement computed by ForwardCalculation.
     static PlanarPositionPartials PositionPartials(const State &x, const Control &u, const double dt) {
-        return IntegratePlanarPositionPartials(x(mTheta), NextTheta(x, u, dt), x(mVel), NextVel(x, u, dt), dt);
+        return IntegratePlanarPositionPartials(x(mTheta), HeadingChange(x, u, dt), x(mVel), NextVel(x, u, dt), dt);
     }
 
     spline sy;

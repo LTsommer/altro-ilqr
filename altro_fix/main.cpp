@@ -349,17 +349,20 @@ int main(int argc, char **argv) {
         const double k_lat = kInitLatGain;
         const double k_heading = kInitHeadingGain;
         SmoothKappaModel model;
-        State x = x0;
+        State x = model.PrepareInitialState(x0);
         for (int t = 0; t < static_cast<int>(ds.size()); ++t) {
             Vec2d sl;
             (void)fcs->CartCoord2FrenetCoord(Vec2d(x(kXPos), x(kYPos)), sl);
             const double s_next = std::min(sl.x() + ds[t], fcs->GetSlength());
-            const double heading_err = x(kTheta) - fcs->GetRefCurveHeading(sl.x());
-            const double kappa_cmd =
-                    fcs->GetRefCurveCurvature(s_next) - k_lat * sl.y() - k_heading * NormalizeAngle(heading_err);
+            const double heading_err = AngleDifference(x(kTheta), fcs->GetRefCurveHeading(sl.x()));
+            const double kappa_cmd = fcs->GetRefCurveCurvature(s_next) - k_lat * sl.y() - k_heading * heading_err;
             const double dkappa_des = (kappa_cmd - x(kKappa)) / (2.0 * ds[t]);
             u0[t](kDDkappa) = std::min(u_max, std::max(u_min, (dkappa_des - x(kDkappa)) / ds[t]));
             x = model.ForwardCalculation(x, u0[t], ds[t]);
+            if (!x.allFinite()) {
+                std::cerr << "Invalid curvature-tracking initial guess at step " << t << '\n';
+                return 1;
+            }
         }
     }
     States x_res_seq;
@@ -370,7 +373,7 @@ int main(int argc, char **argv) {
     if (projection_method) {
         altro_solver->SetProjectionMethod(*projection_method);
     }
-    altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
+    const auto projection_status = altro_solver->Solve(x0, u0, x_res_seq, u_res_seq);
     vector<double> ilqr_x, ilqr_y, ilqr_h, ilqr_k, ilqr_dk, ilqr_ddk;
     ilqr_x.reserve(x_res_seq.size());
     ilqr_y.reserve(x_res_seq.size());
@@ -398,6 +401,10 @@ int main(int argc, char **argv) {
     });
 
     // Export the result; plot it with scripts/plot_results.py.
+    const bool projection_incomplete = altro::ProjectionIncomplete(projection_status);
+    if (projection_incomplete) {
+        std::cerr << "ALTRO projection did not reach tolerance. Exporting the approximate result.\n";
+    }
     WriteCsv(output_dir + "/alilqr_trajectory.csv",
              {{"s", s},
               {"ref_yaw", yaw},
@@ -415,5 +422,5 @@ int main(int argc, char **argv) {
               {"right_x", rb_x},
               {"right_y", rb_y}});
 
-    return 0;
+    return projection_incomplete ? 1 : 0;
 }

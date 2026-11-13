@@ -327,7 +327,9 @@ $$
 x=[p_x,p_y,\theta,\kappa,v,a],\qquad u=[j,\dot\kappa].
 $$
 
-位置变化由速度和航向的积分给出；实现使用 `calculus.h` 中的 10 点 Gauss–Legendre 公式计算 $\Delta p_x$ 和 $\Delta p_y$。正向积分在中点航向的坐标系里把对称的节点两两配对（`IntegratePlanarPosition`），与逐点求和等价，三角函数求值更少。`JacobianX` / `JacobianU` 中 $p_x$、 $p_y$ 两行对同一组积分节点精确求导（经 $\theta_{k+1}$、 $v_{k+1}$ 链式传递到 $\kappa$、 $a$ 和控制量），与正向积分保持一致。`motion_planning/motion_planning.cpp` 在此基础上注册向心加速度、向心 jerk、曲率变化率、纵向 jerk、参考线偏移、目标速度和到边界的舒适距离等代价，并加入相应的动力学和道路安全约束。此外：
+两个模型都把状态航向存为 $[-\pi, \pi)$ 主值。初始航向和单步物理转角须为有限数，绝对值不得超过 1024 rad。模型在生成状态和调用位置积分前执行这个数值契约。航向约束和反馈使用有符号最短角差。
+
+位置变化由速度和航向的积分给出；实现使用 `common/calculus.h` 中的 10 点 Gauss–Legendre 公式计算 $\Delta p_x$ 和 $\Delta p_y$。积分使用步首航向和实际步内转角，并在生成三角函数的参数时取主值。正向积分在中点航向的坐标系里把对称的节点两两配对（`IntegratePlanarPosition`），与逐点求和等价，三角函数求值更少。`JacobianX` / `JacobianU` 中 $p_x$、 $p_y$ 两行对同一组积分节点精确求导（经局部末端航向和 $v_{k+1}$ 链式传递到 $\kappa$、 $a$ 和控制量），与正向积分保持一致。`motion_planning/motion_planning.cpp` 在此基础上注册向心加速度、向心 jerk、曲率变化率、纵向 jerk、参考线偏移、目标速度和到边界的舒适距离等代价，并加入相应的动力学和道路安全约束。此外：
 
 - **边界跟随车辆位置**：求解时开启 `SetUpdateConfig(true)`，每轮外循环开始时把每个状态投影到参考线，按实际位置选取参考点、参考航向和边界段（而不是按时间步固定）；
 - **窄处降速**：`SpeedLimitBySConstraint` 约束 $v\le v_{lim}(s)$， $s$ 由车的位置投影得到。 $v_{lim}=3+10\times w_{free}$（m/s， $w_{free}$ 为横向可用宽度），且不低于从初速按 1.5 m/s² 减速能达到的速度；
@@ -381,6 +383,8 @@ mkdir -p out
 
 C++ 调用方可在 `Solve(...)` 前调用 `SetProjectionMethod(...)`，传入 `altro::ProjectionMethod::KKTEigen` 或 `altro::ProjectionMethod::KKTQdldl`。显式选择 Riccati 时传 `altro::ProjectionMethod::Riccati`。
 
+`Solve(...)` 返回 `altro::ProjectionStatus`，状态和控制输出保留最后接受的轨迹。两个示例都会打印投影状态。投影启动后如果未达到容差，示例仍导出近似轨迹和道路 CSV，并返回非零退出码。
+
 ### 查看结果
 
 `alilqr` 和 `mp` 运行结束后各写出两个 CSV 文件：轨迹（`*_trajectory.csv`）和道路（`*_road.csv`，参考线与左右边界）。默认写到当前目录，也可以把输出目录作为第一个参数传入（目录需已存在）。导出在求解计时之外，不影响打印的耗时。
@@ -406,6 +410,8 @@ python3 altro_fix/scripts/plot_results.py mp --dir out --save out/figs
 | `mp_road.csv` | `ref_x/y`、`left_x/y`、`right_x/y` |
 
 同一个文件里各列长度可以不同（例如参考线点数多于边界点数），较短的列末尾留空。
+
+轨迹列 `theta` 是 $[-\pi, \pi)$ 内的航向主值，跨过区间端点时数值会跳变。
 
 ### Polishing benchmark
 

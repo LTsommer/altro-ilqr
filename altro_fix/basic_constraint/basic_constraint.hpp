@@ -468,36 +468,16 @@ private:
     const ControlLimitConstraint<T, M, N> control_limit_constraint_ub_;
 };
 
-/*
-  g(u) = a_ * u + b_[i] > 0
-  represents u_min < u < u_max
-  for u_min < u, g(u) = -u + u_min < 0
-      u < u_max, g(u) = u - u_max < 0
- */
+// One bound on the signed shortest heading error from the reference.
 template<typename T, unsigned M, unsigned N>
 class HeadingTrackConstraint final : public Constraint<T, M, N, Inequality> {
 public:
     OCP_VARIABLES(T, M, N);
-    HeadingTrackConstraint(const CostTermConfig &config, const bool is_lb) : yaw(config.yaw) {
-        // g(u) = a_ * u + b_[i] < 0
-        // -(u - ref) + u_min <= 0
-        // (u - ref) -u_max <=0
-        size_t num_steps = config.p_ref.size();
-        b_.reserve(num_steps);
-        if (is_lb) {
-            a_ = -1;
-            for (int t = 0; t < static_cast<int>(num_steps); t++) {
-                // theta >= yaw + yaw_diff_min (yaw_diff_min <= 0); allows asymmetric bounds
-                b_.emplace_back(yaw[t] + config.yaw_diff_min);
-            }
-        } else {
-            a_ = 1;
-            for (int t = 0; t < static_cast<int>(num_steps); t++) {
-                b_.emplace_back(-yaw[t] - config.yaw_diff_max);
-            }
-        }
-        step_num_ = config.steps.size();
-    }
+    HeadingTrackConstraint(const CostTermConfig &config, const bool is_lb)
+        : a_(is_lb ? -1 : 1),
+          offset_(is_lb ? config.yaw_diff_min : -config.yaw_diff_max),
+          yaw_(config.yaw),
+          step_num_(config.steps.size()) {}
 
     virtual std::type_index GetTypeIndex() const override { return std::type_index(typeid(HeadingTrackConstraint)); }
 
@@ -508,7 +488,7 @@ public:
             cost_val = 0.0;
             return false;
         }
-        cost_val = a_ * x(kTheta) + b_[step];
+        cost_val = a_ * AngleDifference(x(kTheta), yaw_[step]) + offset_;
         return true;
     }
 
@@ -540,8 +520,8 @@ public:
 
 private:
     int a_;
-    vector<double> b_;
-    vector<double> yaw;
+    double offset_;
+    vector<double> yaw_;
     int step_num_;
 };
 

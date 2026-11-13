@@ -6,14 +6,27 @@
 #define CILQR_SMOOTH_KAPPA_MODEL_H
 
 #include "../ilqr_system_declaration.hpp"
-#include "../common/math_utils.h"
+#include "heading.h"
 #include "model.h"
-#include <cmath>
+#include <limits>
 
 class SmoothKappaModel final : public ModelBase<double, 5, 1> {
 public:
     SmoothKappaModel() = default;
     virtual ~SmoothKappaModel() = default;
+
+    State PrepareInitialState(const State &state) const override {
+        State prepared = state;
+        prepared(kTheta) = vehicle_heading::PrepareInitialHeading(state(kTheta));
+        return prepared;
+    }
+
+    State StateDifference(const State &state, const State &reference) const override {
+        State delta = state - reference;
+        delta(kTheta) = AngleDifference(state(kTheta), reference(kTheta));
+        return delta;
+    }
+
     // step here is ds
     /* x(k+1) = x(k) + cos(theta(k)) * ds
      * y(k+1) = y(k) + sin(theta(k)) * ds
@@ -24,8 +37,8 @@ public:
     inline A JacobianX(const State &state, const Control &u, const double step) const override {
         A fx;
         fx.setIdentity();
-        fx(kXPos, kTheta) = -sin(state(kTheta)) * step;
-        fx(kYPos, kTheta) = cos(state(kTheta)) * step;
+        fx(kXPos, kTheta) = -trig_table::SinValue(state(kTheta)) * step;
+        fx(kYPos, kTheta) = trig_table::CosValue(state(kTheta)) * step;
         fx(kTheta, kKappa) = step;
         fx(kTheta, kDkappa) = 0.5 * sqr<double>(step);
         fx(kKappa, kDkappa) = step;
@@ -42,11 +55,15 @@ public:
     }
 
     inline State ForwardCalculation(const State &state, const Control &u, const double step) const override {
+        const double heading_change = state(kKappa) * step + 0.5 * state(kDkappa) * sqr<double>(step) +
+                                      (1.0 / 6.0) * u(kDDkappa) * cube<double>(step);
+        if (!vehicle_heading::IsSupportedAngle(heading_change)) {
+            return State::Constant(std::numeric_limits<double>::quiet_NaN());
+        }
         State new_state;
-        new_state(kXPos) = state(kXPos) + cos(state(kTheta)) * step;
-        new_state(kYPos) = state(kYPos) + sin(state(kTheta)) * step;
-        new_state(kTheta) = state(kTheta) + state(kKappa) * step + 0.5 * state(kDkappa) * sqr<double>(step) +
-                            1.0 / 6.0 * u(kDDkappa) * cube<double>(step);
+        new_state(kXPos) = state(kXPos) + trig_table::CosValue(state(kTheta)) * step;
+        new_state(kYPos) = state(kYPos) + trig_table::SinValue(state(kTheta)) * step;
+        new_state(kTheta) = NormalizeAngle(state(kTheta) + heading_change);
         new_state(kKappa) = state(kKappa) + state(kDkappa) * step + 0.5 * u(kDDkappa) * sqr<double>(step);
         new_state(kDkappa) = state(kDkappa) + u(kDDkappa) * step;
         return new_state;
