@@ -21,9 +21,9 @@ public:
     using Name = Equality;
 
     // An equality constraint c = 0 is always active.
-    static bool IsActive(const double c_val, const double lambda);
+    static bool IsActive(const double c_val, const double lambda) { return true; }
 
-    static void UpdateDual(const double c_val, const double penalty, double &lambda);
+    static void UpdateDual(const double c_val, const double penalty, double &lambda) { lambda += penalty * c_val; }
 };
 
 class Inequality {
@@ -35,9 +35,11 @@ public:
 
     // For c <= 0, the penalty term only applies when the constraint is violated
     // or its multiplier is still positive (the I_mu mask in AL-iLQR).
-    static bool IsActive(const double c_val, const double lambda);
+    static bool IsActive(const double c_val, const double lambda) { return c_val > 0.0 || lambda > 0.0; }
 
-    static void UpdateDual(const double c_val, const double penalty, double &lambda);
+    static void UpdateDual(const double c_val, const double penalty, double &lambda) {
+        lambda = std::max(0.0, lambda + penalty * c_val);
+    }
 };
 
 // One smooth sub-constraint g(x, u) <= 0 and its gradient.

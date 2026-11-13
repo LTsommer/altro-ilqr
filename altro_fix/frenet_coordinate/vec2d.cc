@@ -109,8 +109,3 @@ bool Vec2d::operator==(const Vec2d &other) const {
 Vec2d operator*(const double ratio, const Vec2d &vec) {
     return vec * ratio;
 }
-
-std::ostream &operator<<(std::ostream &out, const Vec2d &A) {
-    out << A.x() << "," << A.y() << " ";
-    return out;
-}

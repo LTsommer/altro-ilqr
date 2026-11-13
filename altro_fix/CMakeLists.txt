@@ -32,7 +32,7 @@ file(GLOB_RECURSE M "model/*.h" "model/*.cpp" "model/*.hpp" "model/*.cc")
 file(GLOB_RECURSE S "augmented_ilqr/*.h" "augmented_ilqr/*.cpp" "augmented_ilqr/*.hpp" "augmented_ilqr/*.cc")
 file(GLOB_RECURSE AL "augmented_ilqr/polished_altro/*.h" "augmented_ilqr/polished_altro/*.cpp"
         "augmented_ilqr/polished_altro/*.hpp" "augmented_ilqr/polished_altro/*.cc")
-file(GLOB_RECURSE MP "motion_planning/*.h" "motion_planning/*.cpp" "motion_planning/*.hpp" "motion_planning/*.cc"
+file(GLOB_RECURSE MP "motion_planning/*.h" "motion_planning/*.cpp" "motion_planning/*.hpp"
         "motion_planning/constraints/*.h" "motion_planning/constraints/*.hpp" "motion_planning/constraints/*.cpp"
         "motion_planning/cost_functions/*.h" "motion_planning/cost_functions/*.hpp" "motion_planning/cost_functions/*.cpp")
 
@@ -68,7 +68,7 @@ set(Header
         csv_writer.hpp
         clock.hpp)
 
-add_executable(${PROJECT_NAME} main.cpp clock.cc ${Header}
+add_executable(${PROJECT_NAME} main.cpp ${Header}
         ${BC}
         ${CD}
         ${CF}
@@ -80,7 +80,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE projection_solver)
 
 set(mp MOTION_PLANNING)
 
-add_executable(mp motion_planning/motion_planning.cpp clock.cc
+add_executable(mp motion_planning/motion_planning.cpp
         ${Header}
         ${BC}
         ${CD}
@@ -93,7 +93,7 @@ add_executable(mp motion_planning/motion_planning.cpp clock.cc
 target_include_directories(mp PUBLIC motion_planning)
 target_link_libraries(mp PRIVATE projection_solver)
 
-add_executable(test test_constraint.cpp clock.cc
+add_executable(test test_constraint.cpp
         ${Header}
         ${BC}
         ${CD}
